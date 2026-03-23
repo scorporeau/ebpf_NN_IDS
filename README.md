@@ -58,6 +58,17 @@ Note that this code is written according to the first.bpf.c script, but you have
 The kernel space code must be written according to the libbpf documentation found online [3,4].
 
 
+# Project steps
+
+## 1) Comparing XDP and TC
+
+In this project, we will be parsing network packets to do IDS. Since ~99% of the packets won't be dropped, they will be parsed 2 times in case of using XDP.
+
+The first benchmark is a performance comparison between XDP and TC for parsing network packets, considering 100% transmission. Such as [2], we will run experiments of the # of packets passed through our script for a fixed time. They compared between user-space and TC, I'll compare perf between XDP and TC.
+
+For this benchmark, we will use the scripts `net_listener` and `net_listener_xdp` that simply forward the packets information to the user space, and prints them.
+
+
 # References
 [1] Real-Time Intrusion Detection and Prevention  with Neural Network in Kernel using eBPF *Junyu Zhang, Pengfei Chen, Zilong He, Hongyang Chen, and Xiaoyun Li*, 2024 https://ieeexplore.ieee.org/document/10646951/
 

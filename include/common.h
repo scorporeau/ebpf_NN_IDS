@@ -13,6 +13,9 @@
 // Keep this reasonable to avoid stack overflow in eBPF
 #define MAX_FILENAME_LEN 256
 
+// IP protocol ID for ethernet layer
+#define ETH_P_IP 0x0800
+
 // Event structure passed from eBPF to user space via ring buffer
 // This structure MUST be aligned properly for both kernel and user space
 struct event {

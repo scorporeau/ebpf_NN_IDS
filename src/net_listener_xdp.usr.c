@@ -12,7 +12,7 @@
 
 // Include our generated skeleton header (generated automatically with Makefile)
 // The skeleton provides type-safe access to maps, programs, and links
-#include "net_listener.skel.h"
+#include "net_listener_xdp.skel.h"
 
 // Our shared definitions (same file used by eBPF program)
 #include "common.h"
@@ -21,7 +21,7 @@
 const bool printPackets = true;
 
 //benchmark time, in s, 0 means no end (until ctrl+c, or kill)
-static int benchmark_time = 0;
+const int benchmark_time = 10;
 
 
 
@@ -102,15 +102,7 @@ int main(int argc, char **argv)
     int err;
     
     time_t t_start = time(NULL);
-
-    //initializing benchmark time if provided as argument
-    if (argc > 1) {
-        benchmark_time = atoi(argv[1]);
-        if (benchmark_time < 0) {
-            fprintf(stderr, "Invalid benchmark time: %s\n", argv[1]);
-            return 1;
-        }
-    }
+    
 
 
 
