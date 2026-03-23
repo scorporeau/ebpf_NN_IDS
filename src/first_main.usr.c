@@ -68,9 +68,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
 
 // Custom libbpf print callback for logging
 // Filters out debug messages to reduce noise
-static int libbpf_print_fn(enum libbpf_print_level level,
-                           const char *format,
-                           va_list args)
+static int libbpf_print_fn(enum libbpf_print_level level,const char *format,va_list args)
 {
     // Only print warnings and errors, skip debug messages
     if (level == LIBBPF_DEBUG)
