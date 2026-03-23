@@ -6,7 +6,20 @@ Zhang et al. (2024) [1] have done a similar work, this is an attemp to go more i
 
 The motivation comes from the statement of Bachl et al., 2022 [2] that an ML based IDS can be implemented on eBPF (with some challenges such as the non turing completeness of eBPF) and are (20%) faster than the same IDS implemented on the user space.
 
-# Good behavior
+# Run the project
+
+
+First, you have to install the required dependencies (might depends of your OS, I used ubuntu 22.04)
+
+`apt install libbpf-dev make gcc`
+
+Then, you can rune the `make` command that compile all C code (eBPF kernel space code, and C user space code).
+The code is outputed in the `/build` directory.
+
+Then, to run any of your script, you can execute the binary file. The binary of file `first_main.usr.c` has to be run with `sudo ./build/first_main` (the code need admin privileges to execute the eBPF program).
+
+# Coding new programs
+
 
 There is some rules on this project. First, we have to be conscious of how does eBPF works  [3,4] , and clearly separate kernel space / user space scripts.
 
@@ -14,11 +27,9 @@ All the C code has to be located under /src, and named .bpf.c and .usr.c for res
 
 Kernel code is the eBPF code, so it has to ise eBPF coding rules (no infinite loops : there is a max number of instructions, etc). The user space and kernel space code can communicate via the eBPF maps.
 
-# Run the project
-
-The make command compile every scripts located under /src, into the /build repository (creating it if it does not exist).
 ## User space code
-The code is not running on the kernel space unless called with a user space code, created by the :
+
+The code is not running on the kernel space unless called with a user space code :
 
 <blockquote>
 #include "first.skel.h"
@@ -34,20 +45,17 @@ err = first_bpf__load(skel);
 [...]
 
 err = first_bpf__attach(skel);
-
 </blockquote>
 
+extract of [first_main.usr.c](/src/first_main.usr.c)
+
+`first` here is the name of the program, but has to be replaces by the name of your .bpf.c program.
+
 Note that this code is written according to the first.bpf.c script, but you have to rename the functions and import according to your file name.
-
-
-Also, 
+ 
 ## Kernel space code
 
 The kernel space code must be written according to the libbpf documentation found online [3,4].
-
-
-extract of [first_main.usr.c](/src/first_main.usr.c)
-`first` here is the name of the program, but has to be replaces by the name of your .bpf.c program.
 
 
 # References
