@@ -54,6 +54,9 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
     //registering packet size
     e->packet_size = data_end - data;
 
+    // get the PID of the process that owns the socket
+    e->pid = bpf_get_current_pid_tgid() >> 32; 
+
     //check the eth header
     struct ethhdr *eth = data;
     if (eth + 1 > data_end) {
@@ -120,10 +123,10 @@ int xdp_trace_net_event(struct xdp_md *ctx)
         e->protocol = 201; // Packet too short
         goto submit;
     } else if (err == -2) {
-        e->protocol = 202; // Not an IP packet
-        goto submit;
-        // bpf_ringbuf_discard(e, 0); // discard event, not an IP packet
-        // return XDP_PASS;
+        // e->protocol = 202; // Not an IP packet
+        // goto submit;
+        bpf_ringbuf_discard(e, 0); // discard event, not an IP packet
+        return XDP_PASS;
     } else if (err == -3) {
         e->protocol = 203; // Packet too short for IP header
         goto submit;
