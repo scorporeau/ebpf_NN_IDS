@@ -13,6 +13,10 @@ First, you have to install the required dependencies (might depends of your OS, 
 
 `apt install libbpf-dev make gcc`
 
+Then, you have to generate the vmlinux.h file that contains all information about your kernel.
+`bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h`
+Note that (I think) the vmlinux file is created again by makefile in the build directory, but it is still useful to have it in your include directory sincs it helps for debugging with an IDE. I use VScode and it allows to ctrl+click on structures defined in vmlinux.h to see their code.
+
 Then, you can rune the `make` command that compile all C code (eBPF kernel space code, and C user space code).
 The code is outputed in the `/build` directory.
 
@@ -60,13 +64,23 @@ The kernel space code must be written according to the libbpf documentation foun
 
 # Project steps
 
-## 1) Comparing XDP and TC
+## 1) Comparing Before and after kernel parsing
 
-In this project, we will be parsing network packets to do IDS. Since ~99% of the packets won't be dropped, they will be parsed 2 times in case of using XDP.
+In this project, we will be parsing network packets to do IDS. Since ~99% of the packets won't be dropped, they will be parsed 2 times in case of using XDP (XDP parses raw packets to analyze them).
 
-The first benchmark is a performance comparison between XDP and TC for parsing network packets, considering 100% transmission. Such as [2], we will run experiments of the # of packets passed through our script for a fixed time. They compared between user-space and TC, I'll compare perf between XDP and TC.
+The first benchmark will be a performance comparison between XDP and standard TC for parsing network packets, considering 100% transmission. Such as [2], we will run experiments of the # of packets passed through our script for a fixed time. They compared between user-space and TC, I'll compare perf between XDP and TC.
 
-For this benchmark, we will use the scripts `net_listener` and `net_listener_xdp` that simply forward the packets information to the user space, and prints them.
+## 2) Comparing different ML techniques
+
+In order to implement our IDS with ML at the kernel level, we have to chose what to use in order to classify our packets as intrusive or not. [???] has already made some studies about the best ML technique, which seems to be a Decision tree.
+
+We will still study the use of a basic NN [1], a Decision tree, a random forest 
+
+
+
+# Discussion
+
+Wouldn't be more interesting to not at all parse the packet and just use unparsed packet ? let the network learn the parsing ? (maybe not a good idea, because we need more global information as the last packet recieved from this IP, mean size of packets by this IP, ... for the NN to do great work, according to literature.)
 
 
 # References
