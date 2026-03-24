@@ -98,15 +98,11 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
 
 }
 
-
-//TODO : modify following script to do XDP instead of tracepoint
+//XDP network listener main function
 SEC("xdp")
 int xdp_trace_net_event(struct xdp_md *ctx)
 {
     struct netevent *e;
-    struct iphdr iph_data;
-    struct tcphdr tcph_data;
-    struct udphdr udph_data;
 
     // Reserve space in the ring buffer for our event structure
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
@@ -120,21 +116,8 @@ int xdp_trace_net_event(struct xdp_md *ctx)
         bpf_ringbuf_discard(e, 0); // Discard the reserved event if parsing failed
         return XDP_PASS; // Pass the packet through
     }
-    
-    e->src_ip = iph_data.saddr;
-    e->dst_ip = iph_data.daddr;
-    e->protocol = iph_data.protocol;
-    
-    // Parse TCP/UDP based on protocol
-    if (e->protocol == IPPROTO_TCP) {
-        e->src_port = ((tcph_data.source & 0xFF) << 8) | ((tcph_data.source >> 8) & 0xFF);
-        e->dst_port = ((tcph_data.dest & 0xFF) << 8) | ((tcph_data.dest >> 8) & 0xFF);
-    } else if (e->protocol == IPPROTO_UDP) {
-        e->src_port = ((udph_data.source & 0xFF) << 8) | ((udph_data.source >> 8) & 0xFF);
-        e->dst_port = ((udph_data.dest & 0xFF) << 8) | ((udph_data.dest >> 8) & 0xFF);
-    }
 
 submit:
     bpf_ringbuf_submit(e, 0);
-    return 0;
+    return XDP_PASS;
 }
