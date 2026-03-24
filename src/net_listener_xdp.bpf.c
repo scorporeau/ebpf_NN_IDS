@@ -72,6 +72,7 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
     e->src_ip = ip->saddr;
 
     //get protocol (TCP, UDP or something else)
+    // IP protocol list : https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers
     if (ip->protocol == IPPROTO_TCP) {
         e->protocol = 6; // TCP
         struct tcphdr *tcp = data + sizeof(struct ethhdr) + sizeof(struct iphdr);
@@ -98,59 +99,39 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
 }
 
 
-
-SEC("tp/net/net_dev_start_xmit")
-int trace_net_dev_start_xmit(struct trace_event_raw_net_dev_start_xmit *ctx)
+//TODO : modify following script to do XDP instead of tracepoint
+SEC("xdp")
+int xdp_trace_net_event(struct xdp_md *ctx)
 {
     struct netevent *e;
     struct iphdr iph_data;
     struct tcphdr tcph_data;
     struct udphdr udph_data;
-    void *skb_data;
 
+    // Reserve space in the ring buffer for our event structure
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
-        return 0;
+        return XDP_PASS;
+        // Ring buffer is full, pass the packet through
     }
-    // Access the sk_buff structure from tracepoint
-    struct sk_buff *skb = ctx->skbaddr;
-    
-    // Get packet data start (kernel pointer)
-    BPF_CORE_READ_INTO(&skb_data, skb, data);
-    BPF_CORE_READ_INTO(&e->packet_size, skb, len);
-    
-    // Use the network_offset from context to find the IP header
-    void *ip_header = skb_data + ctx->network_offset;
-    
-    // Read IP header from kernel memory using bpf_probe_read_kernel
-    if (bpf_probe_read_kernel(&iph_data, sizeof(iph_data), ip_header) < 0) {
-        goto submit;
+
+    //parse the packet into the event structure
+    if (parse_pack(ctx, e) < 0) {
+        bpf_ringbuf_discard(e, 0); // Discard the reserved event if parsing failed
+        return XDP_PASS; // Pass the packet through
     }
     
     e->src_ip = iph_data.saddr;
     e->dst_ip = iph_data.daddr;
     e->protocol = iph_data.protocol;
     
-    // Use transport_offset if available
-    if (ctx->transport_offset_valid) {
-        void *transport_header = skb_data + ctx->transport_offset;
-        
-        // Parse TCP/UDP based on protocol
-        if (e->protocol == IPPROTO_TCP) {
-            if (bpf_probe_read_kernel(&tcph_data, sizeof(tcph_data), 
-                                      transport_header) < 0) {
-                goto submit;
-            }
-            e->src_port = ((tcph_data.source & 0xFF) << 8) | ((tcph_data.source >> 8) & 0xFF);
-            e->dst_port = ((tcph_data.dest & 0xFF) << 8) | ((tcph_data.dest >> 8) & 0xFF);
-        } else if (e->protocol == IPPROTO_UDP) {
-            if (bpf_probe_read_kernel(&udph_data, sizeof(udph_data), 
-                                      transport_header) < 0) {
-                goto submit;
-            }
-            e->src_port = ((udph_data.source & 0xFF) << 8) | ((udph_data.source >> 8) & 0xFF);
-            e->dst_port = ((udph_data.dest & 0xFF) << 8) | ((udph_data.dest >> 8) & 0xFF);
-        }
+    // Parse TCP/UDP based on protocol
+    if (e->protocol == IPPROTO_TCP) {
+        e->src_port = ((tcph_data.source & 0xFF) << 8) | ((tcph_data.source >> 8) & 0xFF);
+        e->dst_port = ((tcph_data.dest & 0xFF) << 8) | ((tcph_data.dest >> 8) & 0xFF);
+    } else if (e->protocol == IPPROTO_UDP) {
+        e->src_port = ((udph_data.source & 0xFF) << 8) | ((udph_data.source >> 8) & 0xFF);
+        e->dst_port = ((udph_data.dest & 0xFF) << 8) | ((udph_data.dest >> 8) & 0xFF);
     }
 
 submit:
