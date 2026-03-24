@@ -6,20 +6,24 @@
 #include <unistd.h>
 #include <time.h>
 #include <sys/resource.h>
+#include <net/if.h>
+
 
 // libbpf library header for core BPF functionality
 #include <bpf/libbpf.h>
 
 // Include our generated skeleton header (generated automatically with Makefile)
 // The skeleton provides type-safe access to maps, programs, and links
-#include "net_listener.skel.h"
+#include "net_listener_tc.skel.h"
 
 // Our shared definitions (same file used by eBPF program)
 #include "common.h"
 
 
+
 //benchmark time, in s, 0 means no end (until ctrl+c, or kill)
 static int benchmark_time = 0;
+
 
 int n_events = 0;
 
@@ -71,7 +75,6 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
     return 0;
 }
 
-
 // Global flag for graceful shutdown
 // Marked volatile because it's modified by signal handler
 static volatile sig_atomic_t exiting = 0;
@@ -87,13 +90,10 @@ static void sig_handler(int sig)
 }
 
 
-
-
-
 int main(int argc, char **argv)
 {
     // pointer to our eBPF skeleton structure
-    struct net_listener_bpf *skel = NULL;
+    struct net_listener_tc_bpf *skel = NULL;
 
     struct ring_buffer *rb = NULL;
 
@@ -111,11 +111,9 @@ int main(int argc, char **argv)
     }
 
 
-
-
     //1
     // open bpf skeleton
-    skel = net_listener_bpf__open();
+    skel = net_listener_tc_bpf__open();
     if (!skel) {
         fprintf(stderr, "Failed to open BPF skeleton\n");
         return 1;
@@ -124,53 +122,61 @@ int main(int argc, char **argv)
 
     //2
     // Load & verify BPF program
-    err = net_listener_bpf__load(skel);
+    err = net_listener_tc_bpf__load(skel);
     if (err) {
         fprintf(stderr, "Error: Failed to load / verify BPF skeleton: %d\n", err);
         goto cleanup;
     }
 
     //3
-    //attach BPF to hook
-    err = net_listener_bpf__attach(skel);
+    //attach TC BPF to hook & with the right network interface
+    int ifindex = if_nametoindex(NET_INTERFACE);
+    if (!ifindex) {
+        fprintf(stderr, "Failed to find network interface name: %s\n", NET_INTERFACE);
+        goto cleanup;
+    }
+
+    //attach script to the hook
+    err = net_listener_tc_bpf__attach(skel);
     if (err) {
         fprintf(stderr, "Failed to attach BPF skeleton: %d\n", err);
         goto cleanup;
     }
-
 
     //4
     //signal handlers for graceful shutdown !!!
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
-
     //5
-    // empty the ring buffer2) & process data
-    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),
-                            handle_event,
-                            NULL,
-                            NULL);
-    
+    // create ring buffer to receive events from the kernel
+    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),handle_event,NULL,NULL);
     if (!rb) {
         err = -1;
         fprintf(stderr, "Failed to create ring buffer\n");
         goto cleanup;
     }
 
+    //6
+    // print the header
     if (PRINT_ALL) {
         //header printing, then let the handle_event function do its work
         printf("%-4s %-15s:%-8s %-15s:%-8s %-8s %-8s %-8s\n","n", "ipS", "portS","ipD","portD","prot","size","pid");
     } else {
-        printf("%-4s\n", "N");
+        printf("%-4s\n", "n");
     }
-    
 
-    //"infinite" loop to listen to the ring
+
+
+
+
+
+    //7
+    //infinite loop to listen to the ring buffer
     while (!exiting) {
-        // Poll with 20ms timeout
+        // Poll with 200ms timeout
         // Returns number of events consumed, or negative on error
-        err = ring_buffer__poll(rb, 20 /* timeout in ms */);
+        err = ring_buffer__poll(rb, 200 /* timeout in ms */);
 
         // Handle interruption by signal
         if (err == -EINTR) {
@@ -199,7 +205,7 @@ cleanup:
     ring_buffer__free(rb);
 
     // Destroy the skeleton (detaches programs, closes maps)
-    net_listener_bpf__destroy(skel);
+    net_listener_tc_bpf__destroy(skel);
 
     return err < 0 ? 1 : 0;
 

@@ -1,15 +1,12 @@
 // include/common.h
 // Common definitions shared between eBPF and user-space programs
-// This file is included by both program.bpf.c and main.c
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
+// This file is included by both bpf (kernel space) and user-space code, so it must be compatible with both environments.
 
 #ifndef __COMMON_H
 #define __COMMON_H
 
 #define NET_INTERFACE "enx6c0b5ef61e49" //PUT YOUR NETWORK INTERFACE NAME HERE
-#define PRINT_ALL true //print all packet information, or only the packet numbers
+#define PRINT_ALL true //print all packet information, or only the packet numbers (used only in user-space)
 
 // Maximum length for command name storage
 // Linux TASK_COMM_LEN is 16, we use the same
@@ -51,53 +48,4 @@ struct netevent {
 
 
 
-int n_events = 0;
-
-//handle recieving network event function (prints packet info on terminal)
-static int handle_event(void *ctx, void *data, size_t data_sz)
-{
-    (void)ctx;
-
-    const struct netevent *e = data;
-
-    n_events++;
-
-    if (data_sz < sizeof(*e)) {
-        fprintf(stderr, "Error: event size mismatch\n");
-        return 0;
-    }
-
-    // Determine protocol string
-    char protocol_str[16];
-    if (e->protocol == 6) {
-        strcpy(protocol_str, "TCP");
-    } else if (e->protocol == 17) {
-        strcpy(protocol_str, "UDP");
-    } else {
-        snprintf(protocol_str, sizeof(protocol_str), "%u", e->protocol);
-    }
-
-    if (PRINT_ALL) {
-        //print informations (the IPs with dots for readability)
-        printf("%-4i %-3u.%-3u.%-3u.%-3u:%-8u %-3u.%-3u.%-3u.%-3u:%-8u %-8s %-8u %-8u\n",
-            n_events,
-            (e->src_ip) & 0xFF,
-            (e->src_ip >> 8) & 0xFF,
-            (e->src_ip >> 16) & 0xFF,
-            (e->src_ip >> 24) & 0xFF,
-            e->src_port,
-            (e->dst_ip) & 0xFF,
-            (e->dst_ip >> 8) & 0xFF,
-            (e->dst_ip >> 16) & 0xFF,
-            (e->dst_ip >> 24) & 0xFF,
-            e->dst_port,
-            protocol_str,
-            e->packet_size,
-            e->pid);
-    } else {
-        printf("%-4i\n", n_events);
-    }
-
-    return 0;
-}
 #endif /* __COMMON_H */
