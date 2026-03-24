@@ -44,12 +44,15 @@ struct {
 
 
 //parsing function (to parse the packet & output protocol, etc.)
-// BE CAREFUL TO CATCH ERRORS CODES
+// BE CAREFUL TO CATCH ERRORS CODES (ebpf does not allow errors to be returned)
 static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
 {
     // retrieving packet data & size
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
+
+    //registering packet size
+    e->packet_size = data_end - data;
 
     //check the eth header
     struct ethhdr *eth = data;
@@ -95,7 +98,7 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
         e-> src_port = 0;
         e-> dst_port = 0;
     }
-
+    return 0;
 }
 
 //XDP network listener main function
@@ -107,17 +110,35 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     // Reserve space in the ring buffer for our event structure
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
+        //ringbuf null, pass packet
         return XDP_PASS;
-        // Ring buffer is full, pass the packet through
     }
 
-    //parse the packet into the event structure
-    if (parse_pack(ctx, e) < 0) {
-        bpf_ringbuf_discard(e, 0); // Discard the reserved event if parsing failed
-        return XDP_PASS; // Pass the packet through
+    //parse the packet into the event structure, returning error codes (as protocol) if parsing fails :
+    int err = parse_pack(ctx, e);
+    if (err == -1) {
+        e->protocol = 201; // Packet too short
+        goto submit;
+    } else if (err == -2) {
+        e->protocol = 202; // Not an IP packet
+        goto submit;
+        // bpf_ringbuf_discard(e, 0); // discard event, not an IP packet
+        // return XDP_PASS;
+    } else if (err == -3) {
+        e->protocol = 203; // Packet too short for IP header
+        goto submit;
+    } else if (err == -4) {
+        e->protocol = 204; // Packet too short for TCP header
+        goto submit;
+    } else if (err == -5) {
+        e->protocol = 205; // Packet too short for UDP header
+        goto submit;
     }
 
 submit:
+    //add the code here to drop or pass de packet
+
+    //in this script, we just pass all packets and send them to the user space.
     bpf_ringbuf_submit(e, 0);
     return XDP_PASS;
 }
