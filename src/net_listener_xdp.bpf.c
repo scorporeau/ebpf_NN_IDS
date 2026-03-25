@@ -78,7 +78,6 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
     e->src_ip = ip->saddr;
 
     //get protocol (TCP, UDP or something else)
-    // IP protocol list : https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers
     if (ip->protocol == IPPROTO_TCP) {
         e->protocol = 6; // TCP
         struct tcphdr *tcp = data + sizeof(struct ethhdr) + sizeof(struct iphdr);

@@ -76,11 +76,19 @@ The first benchmark will be a performance comparison between XDP and standard TC
 
 In order to implement our IDS with ML at the kernel level, we have to chose what to use in order to classify our packets as intrusive or not. [???] has already made some studies about the best ML technique, which seems to be a Decision tree.
 
-We will still study the use of a basic NN [1], a Decision tree, a random forest 
+We will still study the use of a basic NN [1], a Decision tree, a random forest
+
+# Benchmarks
+
+## 1) XDP vs TC
+
+Ill first read 
 
 
 
 # Discussion
+
+In order to analyze your traffic (with net_listener scripts) you can easily check information about IPs on [8], information about protocols on [9] and information about TCP/UDP ports on [10]
 
 Wouldn't be more interesting to not at all parse the packet and just use unparsed packet ? let the network learn the parsing ? (maybe not a good idea, because we need more global information as the last packet recieved from this IP, mean size of packets by this IP, ... for the NN to do great work, according to literature.)
 
@@ -99,3 +107,9 @@ Wouldn't be more interesting to not at all parse the packet and just use unparse
 [6] linux kernel events https://www.kernel.org/doc/html/v5.4/trace/events.html
 
 [7] Fast-packet processing...... Vieira et al., 2020
+
+[8] https://whatismyipaddress.com/
+
+[9] https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers
+
+[10] https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers
