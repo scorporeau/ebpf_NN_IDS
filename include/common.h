@@ -6,7 +6,6 @@
 #define __COMMON_H
 
 #define NET_INTERFACE "enx6c0b5ef61e49" //PUT YOUR NETWORK INTERFACE NAME HERE
-#define PRINT_ALL true //print all packet information, or only the packet numbers (used only in user-space)
 
 // Maximum length for command name storage
 // Linux TASK_COMM_LEN is 16, we use the same

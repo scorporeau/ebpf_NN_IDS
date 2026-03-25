@@ -17,6 +17,7 @@
 
 // Our shared definitions (same file used by eBPF program)
 #include "common.h"
+#include "common_usr.h"
 
 
 //benchmark time, in s, 0 means no end (until ctrl+c, or kill)
@@ -24,53 +25,6 @@ static int benchmark_time = 0;
 
 int n_events = 0;
 
-//handle recieving network event function (prints packet info on terminal)
-static int handle_event(void *ctx, void *data, size_t data_sz)
-{
-    (void)ctx;
-
-    const struct netevent *e = data;
-
-    n_events++;
-
-    if (data_sz < sizeof(*e)) {
-        fprintf(stderr, "Error: event size mismatch\n");
-        return 0;
-    }
-
-    // Determine protocol string
-    char protocol_str[16];
-    if (e->protocol == 6) {
-        strcpy(protocol_str, "TCP");
-    } else if (e->protocol == 17) {
-        strcpy(protocol_str, "UDP");
-    } else {
-        snprintf(protocol_str, sizeof(protocol_str), "%u", e->protocol);
-    }
-
-    if (PRINT_ALL) {
-        //print informations (the IPs with dots for readability)
-        printf("%-4i %-3u.%-3u.%-3u.%-3u:%-8u %-3u.%-3u.%-3u.%-3u:%-8u %-8s %-8u %-8u\n",
-            n_events,
-            (e->src_ip) & 0xFF,
-            (e->src_ip >> 8) & 0xFF,
-            (e->src_ip >> 16) & 0xFF,
-            (e->src_ip >> 24) & 0xFF,
-            e->src_port,
-            (e->dst_ip) & 0xFF,
-            (e->dst_ip >> 8) & 0xFF,
-            (e->dst_ip >> 16) & 0xFF,
-            (e->dst_ip >> 24) & 0xFF,
-            e->dst_port,
-            protocol_str,
-            e->packet_size,
-            e->pid);
-    } else {
-        printf("%-4i\n", n_events);
-    }
-
-    return 0;
-}
 
 
 // Global flag for graceful shutdown
@@ -153,7 +107,7 @@ int main(int argc, char **argv)
 
     //5
     // empty the ring buffer2) & process data
-    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),handle_event,NULL,NULL);
+    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),handle_event,&n_events,NULL);
     
     if (!rb) {
         err = -1;
