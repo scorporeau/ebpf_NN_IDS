@@ -125,8 +125,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     } else if (err == -2) {
         // e->protocol = 202; // Not an IP packet
         // goto submit;
-        bpf_ringbuf_discard(e, 0); // discard event, not an IP packet
-        return XDP_PASS;
+        goto discard;
     } else if (err == -3) {
         e->protocol = 203; // Packet too short for IP header
         goto submit;
@@ -144,4 +143,8 @@ submit:
     //in this script, we just pass all packets and send them to the user space.
     bpf_ringbuf_submit(e, 0);
     return XDP_PASS;
+
+discard:
+    bpf_ringbuf_discard(e, 0); // discard event
+    return XDP_PASS; //still passing packet, as we only monitor here.
 }

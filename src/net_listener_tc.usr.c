@@ -129,17 +129,16 @@ int main(int argc, char **argv)
     }
 
     //3
-    //attach TC BPF to hook & with the right network interface
+    //attach TC BPF via tcx
     int ifindex = if_nametoindex(NET_INTERFACE);
     if (!ifindex) {
         fprintf(stderr, "Failed to find network interface name: %s\n", NET_INTERFACE);
         goto cleanup;
     }
 
-    //attach script to the hook
-    err = net_listener_tc_bpf__attach(skel);
-    if (err) {
-        fprintf(stderr, "Failed to attach BPF skeleton: %d\n", err);
+    skel->links.tc_trace_net_event = bpf_program__attach_tcx(skel->progs.tc_trace_net_event, ifindex, NULL);
+    if (!skel->links.tc_trace_net_event) {
+        fprintf(stderr, "Failed to attach TCX program\n");
         goto cleanup;
     }
 
