@@ -82,7 +82,13 @@ We will still study the use of a basic NN [1], a Decision tree, a random forest
 
 ## 1) XDP vs TC
 
-Ill first read 
+I have to make a protocol for benchmarking XDP vs TC with VMs.
+
+## 2) ML architecture
+
+We have to choose a ML architecture to implement (decision tree, NN, SVM, ...)
+
+First, we have to chose a dataset. Since we are doing packet capture (pcaps) we have to find some dataset that did pcaps. We will easily find some on [11]. I am currently downloading CICDDoS2019, 
 
 
 
@@ -113,3 +119,5 @@ Wouldn't be more interesting to not at all parse the packet and just use unparse
 [9] https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers
 
 [10] https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers
+
+[11] https://fkie-cad.github.io/COMIDDS/content/all_datasets/

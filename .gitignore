@@ -1,2 +1,3 @@
 /build
 /include/vmlinux.h
+*.template.tex
