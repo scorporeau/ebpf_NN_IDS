@@ -152,7 +152,7 @@ int main(int argc, char **argv)
     }
 
 cleanup:
-    printf("\n...Cleaning up ...\n");
+    printf("\n...Cleaning up after %d seconds ...\n", (int)difftime(time(NULL), t_start));
     // Clean up resources in reverse order of creation
 
     // Free the ring buffer
