@@ -68,7 +68,9 @@ The kernel space code must be written according to the libbpf documentation foun
 
 In this project, we will be parsing network packets to do IDS. Since ~99% of the packets won't be dropped, they will be parsed 2 times in case of using XDP (XDP parses raw packets to analyze them).
 
-The first benchmark will be a performance comparison between XDP and standard TC for parsing network packets, considering 100% transmission. Such as [2], we will run experiments of the # of packets passed through our script for a fixed time. They compared between user-space and TC, I'll compare perf between XDP and TC.
+It is said [7] that because XDP is the lowest-level of eBPF that can be implemented, it is the more efficient. (on RX side, for TX packets, TC is the lowest one)
+
+The first benchmark will be a performance comparison between XDP and standard TC for parsing incoming network packets, considering 100% transmission. Such as [2], we will run experiments of the # of packets passed through our script for a fixed time.
 
 ## 2) Comparing different ML techniques
 
@@ -95,3 +97,5 @@ Wouldn't be more interesting to not at all parse the packet and just use unparse
 [5] oneuptime eBPF coding tutorial with libbpf https://oneuptime.com/blog/post/2026-01-07-ebpf-libbpf-portable-development/view
 
 [6] linux kernel events https://www.kernel.org/doc/html/v5.4/trace/events.html
+
+[7] Fast-packet processing...... Vieira et al., 2020
