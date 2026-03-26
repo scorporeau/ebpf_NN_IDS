@@ -54,14 +54,8 @@ int main(int argc, char **argv)
     
     time_t t_start = time(NULL);
 
-    //initializing benchmark time if provided as argument
-    if (argc > 1) {
-        benchmark_time = atoi(argv[1]);
-        if (benchmark_time < 0) {
-            fprintf(stderr, "Invalid benchmark time: %s\n", argv[1]);
-            return 1;
-        }
-    }
+    struct handle_event_ctx he_ctx = init_he_ctx(argc, argv, &benchmark_time);
+
 
 
 
@@ -100,10 +94,7 @@ int main(int argc, char **argv)
 
     //5
     // empty the ring buffer2) & process data
-    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),
-                            handle_event,
-                            &n_events,
-                            NULL);
+    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,&he_ctx,NULL);
     
     if (!rb) {
         err = -1;
@@ -111,8 +102,8 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    if (PRINT_ALL) {
-        //header printing, then let the handle_event function do its work
+    if (he_ctx.print_all) {
+        //header printing, then let the print_netevent function do its work
         printf("%-4s %-15s:%-8s %-15s:%-8s %-8s %-8s %-8s\n","n", "ipS", "portS","ipD","portD","prot","size","pid");
     } else {
         printf("%-4s\n", "N");
@@ -123,7 +114,7 @@ int main(int argc, char **argv)
     while (!exiting) {
         // Poll with 20ms timeout
         // Returns number of events consumed, or negative on error
-        err = ring_buffer__poll(rb, 20 /* timeout in ms */);
+        err = ring_buffer__poll(rb, TIMEOUT_RINGBUF_POLL /* timeout in ms */);
 
         // Handle interruption by signal
         if (err == -EINTR) {

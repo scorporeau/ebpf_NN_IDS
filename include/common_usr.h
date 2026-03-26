@@ -16,21 +16,50 @@
 #include "common.h"
 
 
+#define TIMEOUT_RINGBUF_POLL 50 //ms, timeout for ring buffer wait in case of empty buffer.
+//#define PRINT_ALL true //print all packet information, or only the packet numbers (used only in user-space)
 
-#define PRINT_ALL true //print all packet information, or only the packet numbers (used only in user-space)
 
+//struct for print_netevent context. Contains print all boolean and number of events processed
+struct handle_event_ctx {
+    int n_events;
+    const bool print_all;
+};
 
-
+//initializer for handle_event_ctx
+struct handle_event_ctx init_he_ctx(int argc, char **argv, int *benchmark_time) {
+    bool print_all = false;
+    int n_events = 0;
+    //initializing benchmark time if provided as argument
+    if (argc == 2) {
+        print_all = atoi(argv[1]) != 0;
+    }
+    else if (argc == 3) {
+        *benchmark_time = atoi(argv[2]);
+        if (*benchmark_time < 0) {
+            fprintf(stderr, "Invalid benchmark time: %s\n", argv[2]);
+            *benchmark_time = 0;
+        }
+        print_all = atoi(argv[1]) != 0;
+    } else {
+        print_all = false;
+        *benchmark_time = 0;
+    }
+    return (struct handle_event_ctx) {
+        .n_events = n_events,
+        .print_all = print_all
+    };
+}
 
 //handle recieving network event function (prints packet info on terminal)
-static int handle_event(void *ctx, void *data, size_t data_sz)
+static int print_netevent(void *ctx, void *data, size_t data_sz)
 {
 
     const struct netevent *e = data;
 
     //add 1 to n_events which is contained in the context
-    int *n_events = (int *)ctx;
-    (*n_events)++;
+    struct handle_event_ctx *event_ctx = (struct handle_event_ctx *)ctx;
+    event_ctx->n_events++;
 
     if (data_sz < sizeof(*e)) {
         fprintf(stderr, "Error: event size mismatch\n");
@@ -47,10 +76,10 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
         snprintf(protocol_str, sizeof(protocol_str), "%u", e->protocol);
     }
 
-    if (PRINT_ALL) {
+    if (event_ctx->print_all) {
         //print informations (the IPs with dots for readability)
         printf("%-4i %-3u.%-3u.%-3u.%-3u:%-8u %-3u.%-3u.%-3u.%-3u:%-8u %-8s %-8u %-8u\n",
-            *n_events,
+            event_ctx->n_events,
             (e->src_ip) & 0xFF,
             (e->src_ip >> 8) & 0xFF,
             (e->src_ip >> 16) & 0xFF,
@@ -65,7 +94,7 @@ static int handle_event(void *ctx, void *data, size_t data_sz)
             e->packet_size,
             e->pid);
     } else {
-        printf("%-4i\n", *n_events);
+        printf("%-4i\n", event_ctx->n_events);
     }
 
     return 0;

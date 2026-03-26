@@ -35,7 +35,7 @@ static void sig_handler(int sig)
 
 // Callback function invoked for each event from the ring buffer
 // This is called by libbpf's ring buffer polling mechanism
-static int handle_event(void *ctx, void *data, size_t data_sz)
+static int print_netevent(void *ctx, void *data, size_t data_sz)
 {
     // Suppress unused parameter warning
     // ctx could be used to pass user-defined context
@@ -134,7 +134,7 @@ int main(int argc, char **argv)
     // Arguments: file descriptor of ring buffer map, callback function, context
     // bpf_map__fd() returns the file descriptor for the 'events' map
     rb = ring_buffer__new(bpf_map__fd(skel->maps.events),
-                          handle_event,  // Callback for each event
+                          print_netevent,  // Callback for each event
                           NULL,          // Context (unused)
                           NULL);         // Options (use defaults)
     if (!rb) {
