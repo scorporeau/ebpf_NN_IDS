@@ -1,3 +1,18 @@
 /build
 /include/vmlinux.h
+
+# LaTeX build files & templates
 *.template.tex
+*.template.pdf
+*.template.bib
+
+*.log
+*.aux
+*.out
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.glsdefs
+*.bbl
+*.blg
+*.pdf
