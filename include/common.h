@@ -45,6 +45,12 @@ struct netevent {
     __u32 pid;          // Process that owns the socket
 };
 
+// structure for counting information (tot bytes and number of packets processed) per IP pair
+struct ip_count {
+    __u64 count;
+    __u64 tot_bytes;
+};
+
 
 
 #endif /* __COMMON_H */

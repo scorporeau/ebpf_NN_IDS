@@ -88,8 +88,13 @@ I have to make a protocol for benchmarking XDP vs TC with VMs.
 
 We have to choose a ML architecture to implement (decision tree, NN, SVM, ...)
 
-First, we have to chose a dataset. Since we are doing packet capture (pcaps) we have to find some dataset that did pcaps. We will easily find some on [11]. I am currently downloading CICDDoS2019, 
+First, we have to chose a dataset. Since we are doing packet capture (pcaps) we have to find some dataset that did pcaps. We will easily find some on [11]. I am currently downloading CICDDoS2019,
 
+## 3) # of IPs encountered
+
+For a first estimation of the number of IPs addresses encountered during random tasks involving internet, I had to make a benchmark that outputs the nb of IP addresses every few seconds to estimate a coherent number. Ill write each website visited on a specialized .md under /benchmarks.
+
+Even if this benchmark is not that useful, The code could be reused in the ML implementation.
 
 
 # Discussion
