@@ -20,7 +20,7 @@ Note that (I think) the vmlinux file is created again by makefile in the build d
 Then, you can rune the `make` command that compile all C code (eBPF kernel space code, and C user space code).
 The code is outputed in the `/build` directory.
 
-Then, to run any of your script, you can execute the binary file. The binary of file `first_main.usr.c` has to be run with `sudo ./build/first_main` (the code need admin privileges to execute the eBPF program).
+Then, to run any of your script, you can execute its corresponding binary file. The binary of file `first_main.usr.c` is located in `./build/first_main` (the binary need admin privileges to attach the eBPF program).
 
 # Coding new programs
 
@@ -70,7 +70,7 @@ In this project, we will be parsing network packets to do IDS. Since ~99% of the
 
 It is said [7] that because XDP is the lowest-level of eBPF that can be implemented, it is the more efficient. (on RX side, for TX packets, TC is the lowest one)
 
-The first benchmark will be a performance comparison between XDP and standard TC for parsing incoming network packets, considering 100% transmission. Such as [2], we will run experiments of the # of packets passed through our script for a fixed time.
+The first benchmark will be a performance comparison between XDP and standard TC for parsing incoming network packets, considering 100% transmission. Such as [2], we will run experiments of the # of packets passed through our script for a fixed time. The 
 
 ## 2) Comparing different ML techniques
 
@@ -78,24 +78,22 @@ In order to implement our IDS with ML at the kernel level, we have to chose what
 
 We will still study the use of a basic NN [1], a Decision tree, a random forest
 
-# Benchmarks
 
-## 1) XDP vs TC
-
-I have to make a protocol for benchmarking XDP vs TC with VMs.
-
-## 2) ML architecture
-
-We have to choose a ML architecture to implement (decision tree, NN, SVM, ...)
-
-First, we have to chose a dataset. Since we are doing packet capture (pcaps) we have to find some dataset that did pcaps. We will easily find some on [11]. I am currently downloading CICDDoS2019,
-
-## 3) # of IPs encountered
+## 3) # of IPs encountered evaluation
 
 For a first estimation of the number of IPs addresses encountered during random tasks involving internet, I had to make a benchmark that outputs the nb of IP addresses every few seconds to estimate a coherent number. Ill write each website visited on a specialized .md under /benchmarks.
 
 Even if this benchmark is not that useful, The code could be reused in the ML implementation.
 
+The script that I've impemented is `count_IPs_xdp`, it uses a LRU (Least Recent Used) Hashmap (directy from ebpf libraries) to remmeber of the IPs. This means that it forgets really old incoming IPs in case of filled map. It might be used in production thanks to this feature.
+
+The results are provided in this table. I surfed on random websites on the internet. Some benchmark while working, some browsing on the websites i'm used to go, ...
+*log files in `/benchmark/nb_IPs`, not uploaded them for security purposes*
+
+| benchmark nb | time | # of IPs | behaviors |
+| ------------ | ---- | -------- | --------- |
+| 1 | 1min | 87 | youtube, git DL, zimbra mail updating, notion browsing, claude AI updating |
+| 2 | 10min55s | 269 | random internet surfing, email browsing, git cloning, ssh@ my home university, youtube & twitch, linkedIn browsing, email consulting, google browsing
 
 # Discussion
 

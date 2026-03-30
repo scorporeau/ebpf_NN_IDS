@@ -41,17 +41,15 @@ static void sig_handler(int sig)
 
 int main(int argc, char **argv)
 {
+    //parse options (benchmark time, print all)
+    struct handle_event_ctx he_ctx = init_he_ctx(argc, argv, &benchmark_time);
+    // print_all unused for now. But can be used for file printing, or smth else
+
+
     // pointer to our eBPF skeleton structure
     struct count_IPs_xdp_bpf *skel = NULL;
-
-    struct ring_buffer *rb = NULL;
-
     int err;
-    
     time_t t_start = time(NULL);
-    
-
-    struct handle_event_ctx he_ctx = init_he_ctx(argc, argv, &benchmark_time);
 
     //1
     // open bpf skeleton
@@ -117,11 +115,7 @@ int main(int argc, char **argv)
 
 
 cleanup:
-    printf("\n...Cleaning up after %d seconds ...\n", (int)difftime(time(NULL), t_start));
-
-
-
-    
+    printf("\n...Cleaning up ...\n");
 
     printf("%-4s %-15s %-15s %-10s %-10s\n", "n", "Source IP", "Destination IP", "packets", "Bytes");
     printf("----------------------------------------------------------------\n");
@@ -151,7 +145,7 @@ cleanup:
         __u32 dst_ip = next_key & 0xFFFFFFFF;
         //printing information
         //TODO: add possibility to print to a file.
-        printf("%-4d %-3u.%-3u.%-3u.%-3u %-3u.%-3u.%-3u.%-3u %-10llu %-10llu\n",
+        printf("%-4d|%-3u.%-3u.%-3u.%-3u|%-3u.%-3u.%-3u.%-3u|%-10llu|%-10llu\n",
             n,
             /* IP source */
             (src_ip) & 0xFF,
@@ -159,13 +153,13 @@ cleanup:
             (src_ip >> 16) & 0xFF,
             (src_ip >> 24) & 0xFF,
             /* IP dest */
-            (dst_ip) & 0xFF,
-            (dst_ip >> 8) & 0xFF,
-            (dst_ip >> 16) & 0xFF,
             (dst_ip >> 24) & 0xFF,
+            (dst_ip >> 16) & 0xFF,
+            (dst_ip >> 8) & 0xFF,
+            (dst_ip) & 0xFF,
             value.count, value.tot_bytes);
         //next key
         key = &next_key;
     }
-
+    printf(" %d seconds passed \n", (int)difftime(time(NULL), t_start));
 }
