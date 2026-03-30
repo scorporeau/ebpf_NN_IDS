@@ -140,50 +140,46 @@ cleanup:
         bpf_map_lookup_elem(map_fd, &next_key, &value);
 
         n ++;
-        //retrieving IP addresses
+        //retrieving IP addresses (NETWORK BYTE ORDER)
         __u32 src_ip = next_key >> 32;
         __u32 dst_ip = next_key & 0xFFFFFFFF;
+
         //printing information
         //TODO: add possibility to print to a file.
         //create source IP and dest IP strings
         char src_ip_str[16];
         char dst_ip_str[16];
-        inet_ntop(AF_INET, &src_ip, src_ip_str, sizeof(src_ip_str));
-        inet_ntop(AF_INET, &dst_ip, dst_ip_str, sizeof(dst_ip_str));
 
-        //transmitted error parsing : 0.5.18.18 + 15.18.X.X
+        //transmitted error parsing : 0.5.18.18 + 15.18.0.X
 
-        if ((src_ip == 0x00051212) && (dst_ip | 0x0000FFFF == 0x0000120f)) {
-            src_ip_str = "ERROR";
-            switch (dst_ip & 0xFFFF) {
-                case 0x0100:
-                    dst_ip_str = "1:TooShortEth";
+        if ((src_ip == 0x00051212) && ((dst_ip & 0xFFFFFF00) == 0x0f120000)) { //Error IP pair
+            strncpy(src_ip_str, "ERROR", sizeof(src_ip_str));
+            //retrieving exact error code
+            switch (dst_ip & 0xFF) {
+                case 0x01:
+                    strncpy(dst_ip_str, "1:TooShortEth", sizeof(dst_ip_str));
                     break;
-                case 0x0200:
-                    dst_ip_str = "2:NotIP";
+                case 0x02:
+                    strncpy(dst_ip_str, "2:NotIP", sizeof(dst_ip_str));
                     break;
-                case 0x0300:
-                    dst_ip_str = "3:TooShortIP";
+                case 0x03:
+                    strncpy(dst_ip_str, "3:TooShortIP", sizeof(dst_ip_str));
                     break;
-                case 0xFF00:
-                    dst_ip_str = "OTHER";
+                case 0xFF:
+                    strncpy(dst_ip_str, "OTHER", sizeof(dst_ip_str));
+                default:
+                    strncpy(dst_ip_str, "UNKNOWN", sizeof(dst_ip_str));
             }
+        } else {
+            //classical IP parsing
+            inet_ntop(AF_INET, &src_ip, src_ip_str, sizeof(src_ip_str));
+            inet_ntop(AF_INET, &dst_ip, dst_ip_str, sizeof(dst_ip_str));
         }
 
         printf("%-4d|%-15s|%-15s|%-10llu|%-10llu\n",
             n,
             src_ip_str,
             dst_ip_str,
-            value.count, value.tot_bytes);
-        //next key
-        key = &next_key;
-    }
-            (src_ip >> 24) & 0xFF,
-            /* IP dest */
-            (dst_ip) & 0xFF,
-            (dst_ip >> 8) & 0xFF,
-            (dst_ip >> 16) & 0xFF,
-            (dst_ip >> 24) & 0xFF,
             value.count, value.tot_bytes);
         //next key
         key = &next_key;
