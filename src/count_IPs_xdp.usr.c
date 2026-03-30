@@ -153,10 +153,10 @@ cleanup:
             (src_ip >> 16) & 0xFF,
             (src_ip >> 24) & 0xFF,
             /* IP dest */
-            (dst_ip >> 24) & 0xFF,
-            (dst_ip >> 16) & 0xFF,
-            (dst_ip >> 8) & 0xFF,
             (dst_ip) & 0xFF,
+            (dst_ip >> 8) & 0xFF,
+            (dst_ip >> 16) & 0xFF,
+            (dst_ip >> 24) & 0xFF,
             value.count, value.tot_bytes);
         //next key
         key = &next_key;

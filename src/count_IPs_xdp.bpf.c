@@ -91,14 +91,21 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     int ret = parse_update(ctx, &key, &pkt_size);
     //handle errors
     if (ret < 0) {
-        //create a special IP pair for error counting. Let's use 0.5.18.18 + 15.18.0.ERR (0, then ERROR letters placement in the alphabet, then error code)
+        //create a special IP pair for error counting. Let's use 0.5.18.18 + 15.18.X.X (0, then ERROR letters placement in the alphabet, then error code)
         //All the range of destination IPs addresses produced by this code are HP datacenters in the silicon valley. Note that there is no real connection to these IPs.
         int dest_ip_error;
         switch (ret) {
-            case -1: dest_ip_error = 0x0f120001; //too short for eth header
-            case -2: dest_ip_error = 0x0f120002; //not IP packet
-            case -3: dest_ip_error = 0x0f120003; //too short for IP header
-            default: dest_ip_error = 0x0f120100; //unknown error
+            case -1:
+                dest_ip_error = 0x0100120f;
+                break; //too short for eth header
+            case -2:
+                dest_ip_error = 0x0200120f; //not IP packet
+                break;
+            case -3:
+                dest_ip_error = 0x0300120f; //too short for IP header
+                break;
+            default:
+                dest_ip_error = 0xFF00120f; //unknown error
         }
         
         key = ((__u64)bpf_htonl(0x00051212) << 32) | (__u64)dest_ip_error; //ERRO.ERRO key
