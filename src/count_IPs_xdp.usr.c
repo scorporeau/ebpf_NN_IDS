@@ -145,12 +145,39 @@ cleanup:
         __u32 dst_ip = next_key & 0xFFFFFFFF;
         //printing information
         //TODO: add possibility to print to a file.
-        printf("%-4d|%-3u.%-3u.%-3u.%-3u|%-3u.%-3u.%-3u.%-3u|%-10llu|%-10llu\n",
+        //create source IP and dest IP strings
+        char src_ip_str[16];
+        char dst_ip_str[16];
+        inet_ntop(AF_INET, &src_ip, src_ip_str, sizeof(src_ip_str));
+        inet_ntop(AF_INET, &dst_ip, dst_ip_str, sizeof(dst_ip_str));
+
+        //transmitted error parsing : 0.5.18.18 + 15.18.X.X
+
+        if ((src_ip == 0x00051212) && (dst_ip | 0x0000FFFF == 0x0000120f)) {
+            src_ip_str = "ERROR";
+            switch (dst_ip & 0xFFFF) {
+                case 0x0100:
+                    dst_ip_str = "1:TooShortEth";
+                    break;
+                case 0x0200:
+                    dst_ip_str = "2:NotIP";
+                    break;
+                case 0x0300:
+                    dst_ip_str = "3:TooShortIP";
+                    break;
+                case 0xFF00:
+                    dst_ip_str = "OTHER";
+            }
+        }
+
+        printf("%-4d|%-15s|%-15s|%-10llu|%-10llu\n",
             n,
-            /* IP source */
-            (src_ip) & 0xFF,
-            (src_ip >> 8) & 0xFF,
-            (src_ip >> 16) & 0xFF,
+            src_ip_str,
+            dst_ip_str,
+            value.count, value.tot_bytes);
+        //next key
+        key = &next_key;
+    }
             (src_ip >> 24) & 0xFF,
             /* IP dest */
             (dst_ip) & 0xFF,
