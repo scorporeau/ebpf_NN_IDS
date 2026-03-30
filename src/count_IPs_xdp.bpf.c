@@ -51,8 +51,8 @@ static inline int parse_update(struct xdp_md *ctx, __u64 *key, __u32 *pkt_size)
     // retrieving packet data & size
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
-
-
+    //get packet size
+    *pkt_size = (__u32)(data_end - data);
 
     //1 check the eth header
     struct ethhdr *eth = data;
@@ -73,7 +73,6 @@ static inline int parse_update(struct xdp_md *ctx, __u64 *key, __u32 *pkt_size)
 
     //4 converting ipsource, ipdest to the key of the map (combining them into a single 64 bit int)
     *key = ((__u64)ip->saddr << 32) | ip->daddr;
-    *pkt_size = (__u32)(data_end - data);
 
     //don't need to parse protocol, since we are only counting IPs and size.
 
@@ -109,7 +108,6 @@ int xdp_trace_net_event(struct xdp_md *ctx)
         }
         
         key = ((__u64)0x00051212 << 32) | (__u64)dest_ip_error; //ERRO.ERRO key
-        pkt_size = 0;
     } else {
         //no error, do nothing because key and pkt_size are already filled by parse_update
     }
