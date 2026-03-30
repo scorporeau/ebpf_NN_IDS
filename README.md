@@ -94,7 +94,7 @@ The results are provided in this table. I surfed on random websites on the inter
 | ------------ | ---- | -------- | --------- |
 | 1 | 1min | 87 | youtube, git DL, zimbra mail updating, notion browsing, claude AI updating |
 | 2 | 10min55s | 269 | random internet surfing, email browsing, git cloning, ssh@ my home university, youtube & twitch, linkedIn browsing, email consulting, google browsing
-
+| 3 | 24min21s | 343 | random internet tasks (not intense)
 # Discussion
 
 In order to analyze your traffic (with net_listener scripts) you can easily check information about IPs on [8], information about protocols on [9] and information about TCP/UDP ports on [10]
