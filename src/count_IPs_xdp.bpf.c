@@ -47,7 +47,7 @@ struct {
 
 
 // parse the packet located in the context, and fill the map with the right structure.
-static inline int parse_update(struct xdp_md *ctx)
+static inline int parse_update(struct xdp_md *ctx, __u64 *key, __u32 *pkt_size)
 {
     // retrieving packet data & size
     void *data = (void *)(long)ctx->data;
@@ -55,38 +55,28 @@ static inline int parse_update(struct xdp_md *ctx)
 
 
 
-    //check the eth header
+    //1 check the eth header
     struct ethhdr *eth = data;
     if (eth + 1 > data_end) {
         return -1; // error, packet too short
     }
 
-    //check if its IP protocol
+    //2 check if its IP protocol
     if (eth->h_proto != bpf_htons(ETH_P_IP)) {
         return -2; // not an IP packet
     }
 
-    //get ip header
+    //3 get ip header
     struct iphdr *ip = data + sizeof(struct ethhdr);
     if (ip + 1 > data_end) {
         return -3; // error, packet too short for IP header
     }
 
-    //converting ipsource, ipdest to the key of the map (combining them into a single 64 bit int)
-    __u64 key = ((__u64)ip->saddr << 32) | ip->daddr;
-    __u32 pkt_size = (__u32)(data_end - data);
+    //4 converting ipsource, ipdest to the key of the map (combining them into a single 64 bit int)
+    *key = ((__u64)ip->saddr << 32) | ip->daddr;
+    *pkt_size = (__u32)(data_end - data);
 
     //don't need to parse protocol, since we are only counting IPs and size.
-
-    //update map
-    struct ip_count *ipc = bpf_map_lookup_elem(&ip_count_map, &key);
-    if (ipc) {
-        __sync_fetch_and_add(&ipc->count, 1);
-        __sync_fetch_and_add(&ipc->tot_bytes, pkt_size);
-    } else {
-        struct ip_count new_ipc = { .count = 1, .tot_bytes = pkt_size };
-        bpf_map_update_elem(&ip_count_map, &key, &new_ipc, BPF_ANY);
-    }
 
     return 0; // success
 }
@@ -95,11 +85,34 @@ static inline int parse_update(struct xdp_md *ctx)
 SEC("xdp")
 int xdp_trace_net_event(struct xdp_md *ctx)
 {
-    if (parse_update(ctx) >= 0) {
-        //Packet parsed successfully, passing it.
-        return XDP_PASS;
+    __u64 key;
+    __u32 pkt_size;
+
+    //parse the packet and get the key and packet size
+    int ret = parse_update(ctx, &key, &pkt_size);
+    //handle errors
+    if (ret < 0) {
+        //create a special IP for error counting. Let's use 5.18.18.15 (ERRO letters placement in the alphabet)
+        //I've looked at this address, it seems to be a russian IP address, don't worry if it shows up in the map.
+        //We're not getting attacked by some russian hacker.
+        key = ((__u64)bpf_htonl(0x0512120f) << 32) | (__u64)bpf_htonl(0x0512120f); //ERRO.ERRO key
+        pkt_size = 0;
+
     } else {
-        //errors while parsing, still passing but we can also choose to drop the packet if we want to (return XDP_DROP)
-        return XDP_PASS;
+        //no error, do nothing because key and pkt_size are already filled by parse_update
     }
+    // heavily inspired by
+    // https://docs.kernel.org/bpf/map_hash.html#bpf-map-type-lru-hash-and-variants
+    struct ip_count *ipc = bpf_map_lookup_elem(&ip_count_map, &key);
+    if (ipc) {
+        __sync_fetch_and_add(&ipc->count, 1);
+        __sync_fetch_and_add(&ipc->tot_bytes, pkt_size);
+    } else {
+        struct ip_count new_ipc = { 1, pkt_size };
+        bpf_map_update_elem(&ip_count_map, &key, &new_ipc, BPF_NOEXIST);
+    }
+
+
+    return XDP_PASS;
+
 }

@@ -94,6 +94,7 @@ int main(int argc, char **argv)
     signal(SIGTERM, sig_handler);
 
     //5
+    // creating map file descriptor
     int map_fd = bpf_map__fd(skel->maps.ip_count_map);
     if (map_fd < 0) {
         fprintf(stderr, "Failed to get map fd\n");
@@ -119,42 +120,52 @@ cleanup:
     printf("\n...Cleaning up after %d seconds ...\n", (int)difftime(time(NULL), t_start));
 
 
-    __u64 key, next_key;
-    struct ip_count value;
+
+    
 
     printf("%-4s %-15s %-15s %-10s %-10s\n", "n", "Source IP", "Destination IP", "packets", "Bytes");
     printf("----------------------------------------------------------------\n");
 
     //loop to print every entry of the map (note that some entries might have been deleted because we are using LRU Hash maps)
+    // heavily inspired by
+    // https://docs.kernel.org/bpf/map_hash.html#bpf-map-type-lru-hash-and-variants
+
     int n = 0;
-    key = NULL;
-    next_key = NULL;
+    __u64 *key = NULL;
+    __u64 next_key;
+    struct ip_count value;
+    int err_map;
 
-    while (bpf_map_get_next_key(map_fd, &key, &next_key, sizeof(__u64)) == 0) {
-        if (bpf_map_lookup_elem(map_fd, &next_key, sizeof(__u64), &value, sizeof(struct ip_count), NULL) == 0) {
-            n ++;
-
-            //retrieving IP addresses
-            __u32 src_ip = next_key >> 32;
-            __u32 dst_ip = next_key & 0xFFFFFFFF;
-
-            //printing information
-            //TODO: add possibility to print to a file.
-            printf("%-4d %-3u.%-3u.%-3u.%-3u %-3u.%-3u.%-3u.%-3u %-10llu %-10llu\n",
-                n,
-                /* IP source */
-                (src_ip) & 0xFF,
-                (src_ip >> 8) & 0xFF,
-                (src_ip >> 16) & 0xFF,
-                (src_ip >> 24) & 0xFF,
-                /* IP dest */
-                (dst_ip) & 0xFF,
-                (dst_ip >> 8) & 0xFF,
-                (dst_ip >> 16) & 0xFF,
-                (dst_ip >> 24) & 0xFF,
-                value.count, value.tot_bytes);
+    for (;;) {
+        err_map = bpf_map_get_next_key(map_fd, key, &next_key);
+        if (err_map) {
+            printf(" ---END--- \n");
+            break; //no more entries, or error in map_fd
         }
-        key = next_key;
+
+        bpf_map_lookup_elem(map_fd, &next_key, &value);
+
+        n ++;
+        //retrieving IP addresses
+        __u32 src_ip = next_key >> 32;
+        __u32 dst_ip = next_key & 0xFFFFFFFF;
+        //printing information
+        //TODO: add possibility to print to a file.
+        printf("%-4d %-3u.%-3u.%-3u.%-3u %-3u.%-3u.%-3u.%-3u %-10llu %-10llu\n",
+            n,
+            /* IP source */
+            (src_ip) & 0xFF,
+            (src_ip >> 8) & 0xFF,
+            (src_ip >> 16) & 0xFF,
+            (src_ip >> 24) & 0xFF,
+            /* IP dest */
+            (dst_ip) & 0xFF,
+            (dst_ip >> 8) & 0xFF,
+            (dst_ip >> 16) & 0xFF,
+            (dst_ip >> 24) & 0xFF,
+            value.count, value.tot_bytes);
+        //next key
+        key = &next_key;
     }
 
 }
