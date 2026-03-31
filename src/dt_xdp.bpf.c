@@ -18,6 +18,7 @@
 
 // Our shared definitions
 #include "ml_dt.h"
+#include "common.h"
 
 // Declare the license - GPL is required for most BPF helper functions
 // This MUST be present or the verifier will reject the program
@@ -28,7 +29,7 @@ char LICENSE[] SEC("license") = "GPL";
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __uint(value_size, sizeof(struct dt_node));
-    __uint(max_entries, NODE_NB);
+    __uint(max_entries, NODE_NB); //can store 2*NODE_NB+1 to enable hot_updates (first node will have an unreferenced feature index and be "the boolean")
     //key is always a __u32 (docs.ebpf.io)
 } dt_nodes_array SEC(".maps");
 
@@ -37,24 +38,23 @@ struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     // Maximum number of entries in the map (adjust as needed)
     __uint(max_entries, 2048);
-    // Key is a __u128 of combined source_ip (32), source_port(32), dest_ip (16), dest_port (16), plus 32 filler bits. (not optimal)
+    // Key is a __u128 of combined source_ip (32), source_port(16), dest_ip (32), dest_port (16), plus 32 filler bits. (not optimal)
     __type(key, __u128);
     // Value is a struct ip_count containing the count and total bytes
-    __type(value, struct ip_count);
-} ip_count_map SEC(".maps");
+    __type(value, struct flow_info);
+} flow_info_map SEC(".maps");
 
 
 
 
 
-// parse the packet located in the context, and fill the map with the right structure.
-static inline int parse_update(struct xdp_md *ctx, __u64 *key, __u32 *pkt_size)
+// parse the packet located in the context, and fill flow_info_map and the feature vector with the required information.
+static inline int parse_update(struct xdp_md *ctx, struct feature_vector *fv)
 {
-    // retrieving packet data & size
+    // retrieving packet data, size and timestamp
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
-    //get packet size
-    *pkt_size = (__u32)(data_end - data);
+    __u64 time_now = bpf_ktime_get_ns();
 
     //1 check the eth header
     struct ethhdr *eth = data;
@@ -73,58 +73,139 @@ static inline int parse_update(struct xdp_md *ctx, __u64 *key, __u32 *pkt_size)
         return -3; // error, packet too short for IP header
     }
 
-    //4 converting ipsource, ipdest to the key of the map (combining them into a single 64 bit int)
-    *key = ((__u64)ip->saddr << 32) | ip->daddr;
+    //4 fill feature vector (with features that does not require flow info)
+    fv->protocol = ip->protocol;
+    fv->packet_size = (__u16)(data_end - data);
+    //retrieving ports (TCP or UDP only)
+    if (ip->protocol == IPPROTO_TCP) {
+        struct tcphdr *tcp = data + sizeof(struct ethhdr) + sizeof(struct iphdr);
+        if (tcp + 1 > data_end) {
+            return -4; // error, packet too short for TCP header
+        }
+        fv->source_port = bpf_ntohs(tcp->source);
+        fv->dest_port = bpf_ntohs(tcp->dest);
+    } else if (ip->protocol == IPPROTO_UDP) {
+        struct udphdr *udp = data + sizeof(struct ethhdr) + sizeof(struct iphdr);
+        if (udp + 1 > data_end) {
+            return -5; // error, packet too short for UDP header
+        }
+        fv->source_port = bpf_ntohs(udp->source);
+        fv->dest_port = bpf_ntohs(udp->dest);
+    } else {
+        fv->source_port = 0;
+        fv->dest_port = 0;
+    }
 
-    //don't need to parse protocol, since we are only counting IPs and size.
+    //5 retrieve & update flow information, then fill the rest of feature vector.
+    __u128 flow_key = ((__u128)ip->saddr << 96) | ((__u128)fv->source_port << 80) | ((__u128)ip->daddr << 48) | ((__u128)fv->dest_port << 32);
+    struct flow_info *fi = bpf_map_lookup_elem(&flow_info_map, &flow_key);
+    if (fi) {
+        // flow already created (one packet already seen)
+        //process time since last packet. !! convert to ms and __u32
+        __u64 tsl = (time_now - fi->last_seen) / 1000000;
+        //handle time longer than max value of __u32 (49.7 days), by capping it to the max value.
+        if (tsl > 0xFFFFFFFF) {
+            fv->time_since_last_packet = 0xFFFFFFFF;
+        } else {
+            fv->time_since_last_packet = (__u32)tsl;
+        }
+        fi->last_seen = time_now;
+        //process (new) mean packet size
+        __sync_fetch_and_add(&fi->count, 1);
+        __sync_fetch_and_add(&fi->tot_bytes, fv->packet_size);
+        fv->mean_packet_size = (__u16)(fi->tot_bytes / fi->count);
 
+        
+    } else {
+        //create the new flow entry
+        struct flow_info new_fi = { time_now, fv->packet_size, 1 };
+        bpf_map_update_elem(&flow_info_map, &flow_key, &new_fi, BPF_NOEXIST);
+        fv->time_since_last_packet = 0xFFFFFFFF; //max value, never seen this flow before
+        fv->mean_packet_size = fv->packet_size; //only one packet seen
+    }
     return 0; // success
 }
+
+
 
 //XDP network listener main function
 SEC("xdp")
 int xdp_trace_net_event(struct xdp_md *ctx)
 {
-    __u64 key;
-    __u32 pkt_size;
+    struct feature_vector fv;
 
-    //parse the packet and get the key and packet size
-    int ret = parse_update(ctx, &key, &pkt_size);
+    //1: parse the packet and update feature vector.
+    int ret = parse_update(ctx, &fv);
     //handle errors
-    if (ret < 0) {
-        //create a special IP pair for error counting. Let's use 0.5.18.18 + 15.18.0.X (0, then ERROR letters placement in the alphabet, then error code)
-        //All the range of destination IPs addresses produced by this code are HP datacenters in the silicon valley. Note that there is no real connection to these IPs.
-        int dest_ip_error;
-        switch (ret) {
-            case -1:
-                dest_ip_error = 0x0f120001;
-                break; //too short for eth header
-            case -2:
-                dest_ip_error = 0x0f120002; //not IP packet
+    switch (ret) {
+        case -2:
+            //Not IP packet (this is not a bad packet, passing it.)
+            goto pass;
+            break;
+        case 0:
+            //success, do nothing (feature vector will be analyzed by the decision tree for drop or pass decision.)
+            break;
+        default:
+            //any other error (too short for eth header, too short for IP header, too short for TCP/UDP header) = bad packet, drop it.
+            goto drop;
+    }
+
+    //2: packet processing (decision tree).
+    int i = 0; //index of the root node of the tree.
+    int pass = true; //default decision = pass;
+    struct dt_node *node;
+    while (i<NODE_NB) {
+
+        node = bpf_map_lookup_elem(&dt_nodes_array, &i);
+        //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (2nd MSB = 0): we apply the current decision.
+        //  !node                                            !node                             node->feature & 0b10000000 == 0         
+        if (!node || node->feature & 0b01000000 == 0) {
+            if (pass) {
+                goto pass;
+            } else {
+                goto drop;
+            }
+        }
+
+        //else, node is defined AND current node is not a leaf, we need to process decision and update the index.
+        __u8 f_i = node->feature & 0b00111111; //feature index is the 6 LSB
+        __u64 feature_value;
+        switch (f_i) {
+            case 0:
+                feature_value = fv.source_port;
                 break;
-            case -3:
-                dest_ip_error = 0x0f120003; //too short for IP header
+            case 1: 
+                feature_value = fv.dest_port;
+                break;
+            case 2:
+                feature_value = fv.protocol;
+                break;
+            case 3:
+                feature_value = fv.packet_size;
+                break;
+            case 4:
+                feature_value = fv.time_since_last_packet;
+                break;
+            case 5:
+                feature_value = fv.mean_packet_size;
                 break;
             default:
-                dest_ip_error = 0x0f1200ff; //unknown error
+                //invalid feature index, should not happen. in this case, let's pass the packet.
+                goto pass;
         }
-        
-        key = ((__u64)0x00051212 << 32) | (__u64)dest_ip_error; //ERRO.ERRO key
-    } else {
-        //no error, do nothing because key and pkt_size are already filled by parse_update
-    }
-    // heavily inspired by
-    // https://docs.kernel.org/bpf/map_hash.html#bpf-map-type-lru-hash-and-variants
-    struct ip_count *ipc = bpf_map_lookup_elem(&ip_count_map, &key);
-    if (ipc) {
-        __sync_fetch_and_add(&ipc->count, 1);
-        __sync_fetch_and_add(&ipc->tot_bytes, pkt_size);
-    } else {
-        struct ip_count new_ipc = { 1, pkt_size };
-        bpf_map_update_elem(&ip_count_map, &key, &new_ipc, BPF_NOEXIST);
+        if (feature_value <= node->threshold) {
+            pass = node->feature & 0b10000000;
+            i = 2*i + 1; //go left
+        } else {
+            //go right
+            pass = !(node->feature & 0b10000000);
+            i = 2*i + 2;
+        }
     }
 
 
+drop:
+    return XDP_DROP;
+pass:
     return XDP_PASS;
-
 }
