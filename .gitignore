@@ -1,5 +1,6 @@
 /build
 /include/vmlinux.h
+/train/data
 
 # LaTeX build files & templates
 *.template.tex
