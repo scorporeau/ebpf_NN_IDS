@@ -95,6 +95,16 @@ The results are provided in this table. I surfed on random websites on the inter
 | 1 | 1min | 87 | youtube, git DL, zimbra mail updating, notion browsing, claude AI updating |
 | 2 | 10min55s | 269 | random internet surfing, email browsing, git cloning, ssh@ my home university, youtube & twitch, linkedIn browsing, email consulting, google browsing
 | 3 | 24min21s | 343 | random internet tasks (not intense)
+
+## 4) Data choice
+
+In order to implement ML techniques, we have to use some databases of packet captures in order to train our programs. [11] present many of theses databases. The following table shows the chosen (or not) databases :
+
+| database_name | size | Chosen ? | Desc | link |
+| ------------- | ---- | -------- | ---- | ---- |
+| CICDDoS2019 | 25GB | Yes | Various DDoS Attacks. pcaps included. | [unb.ca](https://www.unb.ca/cic/datasets/ddos-2019.html) |
+| DEDALE | 8.2TB | No | On the network side, the labels are provided at the flow level, not the packet level. | [inria.fr](https://dedale.inria.fr/download.html) |
+| AIT Log Dataset | 206GB | No | Cannot retrieve labels per pcap | [zenodo.org](https://zenodo.org/records/5789064) |
 # Discussion
 
 In order to analyze your traffic (with net_listener scripts) you can easily check information about IPs on [8], information about protocols on [9] and information about TCP/UDP ports on [10]
