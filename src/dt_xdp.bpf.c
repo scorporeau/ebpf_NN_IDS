@@ -45,11 +45,17 @@ struct {
 } flow_info_map SEC(".maps");
 
 
+// Create a ring buffer map that will be used only if DEBUG == true
+struct {
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, 1024*16); //16KB
+} events_ring SEC(".maps");
+
 
 
 
 // parse the packet located in the context, and fill flow_info_map and the feature vector with the required information.
-static inline int parse_update(struct xdp_md *ctx, struct feature_vector *fv)
+static inline int parse_update(struct xdp_md *ctx, struct feature_vector *fv, struct iphdr *ip_debug)
 {
     // retrieving packet data, size and timestamp
     void *data = (void *)(long)ctx->data;
@@ -71,6 +77,13 @@ static inline int parse_update(struct xdp_md *ctx, struct feature_vector *fv)
     struct iphdr *ip = data + sizeof(struct ethhdr);
     if (ip + 1 > data_end) {
         return -3; // error, packet too short for IP header
+    }
+
+    //3bis : debug if ip_debug != NULL ( if DEBUG == true)
+    if (ip_debug) {
+        //copy ip info to ip_debug
+        ip_debug->saddr = ip->saddr;
+        ip_debug->daddr = ip->daddr;
     }
 
     //4 fill feature vector (with features that does not require flow info)
@@ -132,10 +145,21 @@ static inline int parse_update(struct xdp_md *ctx, struct feature_vector *fv)
 SEC("xdp")
 int xdp_trace_net_event(struct xdp_md *ctx)
 {
-    struct feature_vector fv;
-
     //1: parse the packet and update feature vector.
-    int ret = parse_update(ctx, &fv);
+    struct feature_vector fv;
+    int ret;
+    struct iphdr ipd;
+    if (DEBUG) {
+        //with debug ip info extraction
+        ret = parse_update(ctx, &fv, &ipd); 
+    } else {
+        //without debug ip ingfo extraction
+        ret = parse_update(ctx, &fv, NULL); 
+    }
+    
+    
+    
+
     //handle errors
     switch (ret) {
         case -2:
@@ -205,7 +229,33 @@ int xdp_trace_net_event(struct xdp_md *ctx)
 
 
 drop:
+    if (DEBUG) {
+        //create debug info and send it to the user space via ring buffer
+        struct debug_info *d = bpf_ringbuf_reserve(&events_ring, sizeof(struct debug_info), 0);
+        if (d) {
+            d->src_ip = ipd.saddr;
+            d->dst_ip = ipd.daddr;
+            d->src_port = fv.source_port;
+            d->dst_port = fv.dest_port;
+            d->packet_size = fv.packet_size;
+            d->decision = false; //drop
+            bpf_ringbuf_submit(d, 0);
+        }
+    }
     return XDP_DROP;
 pass:
+    if (DEBUG) {
+        //create debug info and send it to the user space via ring buffer
+        struct debug_info *d = bpf_ringbuf_reserve(&events_ring, sizeof(struct debug_info), 0);
+        if (d) {
+            d->src_ip = ipd.saddr;
+            d->dst_ip = ipd.daddr;
+            d->src_port = fv.source_port;
+            d->dst_port = fv.dest_port;
+            d->packet_size = fv.packet_size;
+            d->decision = true; //pass
+            bpf_ringbuf_submit(d, 0);
+        }
+    }
     return XDP_PASS;
 }

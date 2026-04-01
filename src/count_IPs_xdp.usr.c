@@ -185,4 +185,8 @@ cleanup:
         key = &next_key;
     }
     printf(" %d seconds passed \n", (int)difftime(time(NULL), t_start));
+
+    //skeleton destroying
+    count_IPs_xdp_bpf__destroy(skel);
+    return 0;
 }
