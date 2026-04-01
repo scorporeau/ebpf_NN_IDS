@@ -4,7 +4,7 @@ Reads a CSV with columns: SOURCE_PORT, DEST_PORT, PROTOCOL, MEAN_SIZE, LABEL
 Outputs a C header (dt_params.h) ready to be included in the BPF project.
 
 Usage:
-    max_depth (optional, default=6): limits tree depth.
+    max_depth: limits tree depth. Then, a many csv pathes as you want to include in the dataset.
     With DT_NODE_NB = 2^(max_depth+1) - 1, a depth-6 tree needs 127 nodes.
     Keep max_depth <= 6 to stay within BPF stack limits.
 """
@@ -19,34 +19,42 @@ from sklearn.metrics import classification_report
 from sklearn.preprocessing import LabelEncoder
 
 
-FEATURE_COLS = ["Source Port", "Destination Port", "Protocol", "Fwd Packet Length Mean"] #features columns in the CSV
-FEATURE_IDX  = {"Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length Mean":3} #features ID in the C program. Must match the switch(f_i) in dt_xdp.bpf.c exactly.
+FEATURE_COLS = ["Source Port", "Destination Port", "Protocol", "Fwd Packet Length Mean", "Fwd IAT Mean"] #features columns in the CSV
+FEATURE_IDX  = {"Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length Mean":3, "Fwd IAT Mean": 4} #features ID in the C program. Must match the switch(f_i) in dt_xdp.bpf.c exactly.
 LABEL_COL    = "Label"
 BENIGN_LABEL = "BENIGN"
 
 # Load dataset into a tuple of (X, y) where:
 #   X is a 2D numpy array of shape [n_samples, n_features]. CAN BE REALLY BIG
 #   y is a 1D numpy array of binary labels (0=BENIGN,
-def load_dataset(path: str) -> tuple:
-    df = pd.read_csv(path)
-    df.columns = df.columns.str.strip()
+def load_datasets(pathes) -> tuple:
+    X_parts = []
+    y_parts = []
 
-    #Check if all the columns are in the actual csv
-    missing = [c for c in FEATURE_COLS + [LABEL_COL] if c not in df.columns]
-    if missing:
-        raise ValueError(f"Missing columns in CSV: {missing}")
+    for path in pathes:
+        df = pd.read_csv(path, low_memory=False)  # fixes the DtypeWarning too
+        df.columns = df.columns.str.strip()
 
-    # Drop incomplete rows (= with missing values in features or label columns)
-    df = df.dropna(subset=FEATURE_COLS + [LABEL_COL])
+        missing = [c for c in FEATURE_COLS + [LABEL_COL] if c not in df.columns]
+        if missing:
+            raise ValueError(f"Missing columns in {path}: {missing}")
 
-    X = df[FEATURE_COLS].astype(np.float64).values
+        df = df.dropna(subset=FEATURE_COLS + [LABEL_COL])
 
-    # Binary label: 0 = BENIGN, 1 = MALICIOUS
-    y = (df[LABEL_COL].str.strip() != BENIGN_LABEL).astype(int).values
+        Xi = df[FEATURE_COLS].astype(np.float64).values
+        yi = (df[LABEL_COL].str.strip() != BENIGN_LABEL).astype(int).values
 
-    labels = df[LABEL_COL].str.strip().unique().tolist()
-    print(f"[dataset]  {len(df)} rows, {len(labels)} label classes: {labels}")
-    print(f"[dataset]  BENIGN: {(y==0).sum()}  MALICIOUS: {(y==1).sum()}")
+        labels = df[LABEL_COL].str.strip().unique().tolist()
+        print(f"[dataset]  {path} : {len(df)} rows, {len(labels)} classes: {labels}")
+        print(f"[dataset]  BENIGN: {(yi==0).sum()}  MALICIOUS: {(yi==1).sum()}")
+
+        X_parts.append(Xi)
+        y_parts.append(yi)
+
+    X = np.concatenate(X_parts, axis=0)
+    y = np.concatenate(y_parts, axis=0)
+
+    print(f"\n[dataset]  Total: {len(y)} rows — BENIGN: {(y==0).sum()}  MALICIOUS: {(y==1).sum()}")
     return X, y
 
 # Train a DT.
@@ -57,9 +65,10 @@ def train(X, y, max_depth: int) -> DecisionTreeClassifier:
 
     clf = DecisionTreeClassifier(
         max_depth=max_depth,
-        max_leaf_nodes=2**max_depth, #leave some room but force almost complete tree to be implemented. 
-        class_weight="balanced",    # handles imbalanced BENIGN/MALICIOUS ratio
-        min_samples_leaf=5,
+        class_weight={0: 50, 1: 1},    # handles imbalanced BENIGN/MALICIOUS ratio
+        min_samples_split=500,
+        min_samples_leaf=50,
+        criterion="entropy" #better for imbalanced data
     )
     clf.fit(X_train, y_train)
 
@@ -180,8 +189,8 @@ def main():
         print(__doc__)
         sys.exit(1)
 
-    csv_path  = sys.argv[1]
-    max_depth = int(sys.argv[2]) if len(sys.argv) > 2 else 6
+    csv_pathes  = sys.argv[2:]
+    max_depth = int(sys.argv[1])
 
     # Warn if DT_NODE_NB would exceed BPF map limits
     max_nodes = 2 ** (max_depth + 1) - 1
@@ -189,12 +198,12 @@ def main():
     if max_nodes > 127:
         print(f"[warning] DT_NODE_NB={max_nodes} is large — consider max_depth <= 6")
 
-    X, y = load_dataset(csv_path)
+    X, y = load_datasets(csv_pathes)
     clf  = train(X, y, max_depth)
     export_c_header(clf, max_depth=clf.get_depth(), out_path="dt_params.h")
 
     #print decision tree into standard output (in order to compare with outputed dt_params.h)
-    plot_tree(clf, fontsize= 15, feature_names=FEATURE_COLS, class_names=[BENIGN_LABEL, "Malicious"])
+    plot_tree(clf, fontsize= 10, feature_names=FEATURE_COLS, class_names=[BENIGN_LABEL, "Malicious"])
     plt.show()
 
 if __name__ == "__main__":
