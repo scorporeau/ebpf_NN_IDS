@@ -3,7 +3,7 @@
 #ifndef ML_DT_H
 #define ML_DT_H
 
-#define NODE_NB 64 //actual number of nodes in the implemented decision tree (will reserve array space for NODE_NB nodes, etc ...)
+#define DT_NODE_NB 64 //actual number of nodes in the implemented decision tree (will reserve array space for DT_NODE_NB nodes, etc ...)
 #define DEBUG true //if true, we create a ringbuffer to print logs to the user space.
 
 //decision tree node structure for ebpf.
@@ -36,6 +36,7 @@ struct debug_info {
     __u32 dst_ip;
     __u16 src_port;
     __u16 dst_port;
+    __u8 protocol;
     __u16 packet_size;
     bool decision; //1 = pass, 0 = drop
 };

@@ -28,9 +28,9 @@ char LICENSE[] SEC("license") = "GPL";
 // LRU = Least Recent Used, delete most unused entries once the map is full.
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __uint(value_size, sizeof(struct dt_node));
-    __uint(max_entries, NODE_NB); //can store 2*NODE_NB+1 to enable hot_updates (first node will have an unreferenced feature index and be "the boolean")
-    //key is always a __u32 (docs.ebpf.io)
+    __type(value, struct dt_node);
+    __type(key, __u32); //key is always a __u32 (docs.ebpf.io)
+    __uint(max_entries, DT_NODE_NB); //can store 2*DT_NODE_NB+1 to enable hot_updates (first node will have an unreferenced feature index and be "the boolean")
 } dt_nodes_array SEC(".maps");
 
 //Flow LRU hashmap, to process per-flow features (mean_packet_size & time_since_last_packet)
@@ -151,6 +151,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     struct iphdr ipd;
     if (DEBUG) {
         //with debug ip info extraction
+        ipd = (struct iphdr){0}; //initialize ipd to 0 to avoid verifier issues
         ret = parse_update(ctx, &fv, &ipd); 
     } else {
         //without debug ip ingfo extraction
@@ -178,7 +179,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     int i = 0; //index of the root node of the tree.
     int pass = true; //default decision = pass;
     struct dt_node *node;
-    while (i<NODE_NB) {
+    while (i<DT_NODE_NB) {
 
         node = bpf_map_lookup_elem(&dt_nodes_array, &i);
         //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (2nd MSB = 0): we apply the current decision.
@@ -238,11 +239,12 @@ drop:
             d->src_port = fv.source_port;
             d->dst_port = fv.dest_port;
             d->packet_size = fv.packet_size;
+            d->protocol = fv.protocol;
             d->decision = false; //drop
             bpf_ringbuf_submit(d, 0);
         }
     }
-    return XDP_DROP;
+    return XDP_PASS; //Not actually dropping packets, might cause issue with testing DT (drop all UDP)
 pass:
     if (DEBUG) {
         //create debug info and send it to the user space via ring buffer
@@ -253,6 +255,7 @@ pass:
             d->src_port = fv.source_port;
             d->dst_port = fv.dest_port;
             d->packet_size = fv.packet_size;
+            d->protocol = fv.protocol;
             d->decision = true; //pass
             bpf_ringbuf_submit(d, 0);
         }

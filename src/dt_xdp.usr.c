@@ -42,22 +42,58 @@ static void sig_handler(int sig)
     exiting = 1;
 }
 
-static int print_log(void *ctx, void *data, size_t data_sz)
+static void print_log(void *ctx, void *data, size_t data_sz)
 {
     struct debug_info *d = data;
     char src_ip[INET_ADDRSTRLEN];
     char dst_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &d->src_ip, src_ip, sizeof(src_ip));
     inet_ntop(AF_INET, &d->dst_ip, dst_ip, sizeof(dst_ip));
-    printf("%-16s:%-5d|%-16s:%-5d|%-6d|%-5s\n", src_ip, d->src_port, dst_ip, d->dst_port, d->packet_size,  d->decision ? "PASS" : "DROP");
+    printf("%-16s:%-5d|%-16s:%-5d|%-8d|%-6d|%-5s\n", src_ip, d->src_port, dst_ip, d->dst_port, d->protocol, d->packet_size, d->decision ? "PASS" : "DROP");
 }
 
 //Fill the decision tree nodes structure located in the bpf array that the bpf program uses for IDS decision making.
-static int fill_dt_nodes_array() {
+static int fill_dt_nodes_array(int dt_nodes_array_fd, struct dt_node *dt_nodes_array)
+{
+    for (int i = 0; i < DT_NODE_NB; i++) {
+        if (bpf_map_update_elem(dt_nodes_array_fd, &i, &dt_nodes_array[i], BPF_ANY) != 0) {
+            fprintf(stderr, "Error updating decision tree nodes array map at index %d: %s\n", i, strerror(errno));
+            return -1;
+        }
+    }
+    return 0;
+}
+
+//update parameters and store them in the array (that will be later sent tot the kernel space)
+static void retrieve_dt_parameters(const char *filename, struct dt_node *dt_nodes_array)
+{
+    //create a basic DT that drops UDP packets, and pass everything else. Just for testing purposes.
+    //the structure is the following :
+    /*
+                root : feature = protocol, thresh = 16.
+                /                       \
+                <=16                      >16
+               /                           \
+            PASS              node 2: feature = protocol, thresh = 17
+                                    /               \
+                               ==17                  > 17
+                                /                       \
+                            DROP                        PASS
+    */
+    dt_nodes_array[0] = (struct dt_node) {
+        //root node in the graph
+        .feature = 0b11000010, //feature 2 (protocol), pass left, defined node
+        .threshold = 16
+    };
+    dt_nodes_array[2] = (struct dt_node) {
+        //node 2 in the graph
+        .feature = 0b01000010, //feature 2, pass right, defined node.
+        .threshold = 17
+    };
 
 }
 
-int main(int argc, char const *argv[])
+int main(int argc, char const **argv)
 {
     struct dt_xdp_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
@@ -104,11 +140,11 @@ int main(int argc, char const *argv[])
             goto cleanup;
         }
         //print table header
-        printf("%-16s:%-5s|%-16s:%-5s|%-6s|%-5s\n", "SRC_IP", "PORT", "DST_IP", "PORT", "SIZE", "Dec?");
+        printf("%-16s:%-5s|%-16s:%-5s|%-8s|%-6s|%-5s\n", "SRC_IP", "PORT", "DST_IP", "PORT", "SIZE","PROT", "Dec?");
     }
 
     //create LRU hash map & decision tree nodes array.
-    int map_fd = bpf_map__fd(skel->maps.ip_count_map);
+    int map_fd = bpf_map__fd(skel->maps.flow_info_map);
     if (map_fd < 0) {
         fprintf(stderr, "Failed to get map fd\n");
         goto cleanup;
@@ -116,6 +152,15 @@ int main(int argc, char const *argv[])
     int dt_nodes_array_fd = bpf_map__fd(skel->maps.dt_nodes_array);
     if (dt_nodes_array_fd < 0) {
         fprintf(stderr, "Failed to get decision tree nodes array map fd\n");
+        goto cleanup;
+    }
+
+    //fill decision tree nodes
+    //create array of dt nodes later filled by a function reading parameters from a file outputed by pytorch)
+    struct dt_node dt_nodes_array[DT_NODE_NB];
+    retrieve_dt_parameters("filename.csv", dt_nodes_array);
+    if (fill_dt_nodes_array(dt_nodes_array_fd, dt_nodes_array)) {
+        fprintf(stderr, "Failed to fill decision tree nodes array\n");
         goto cleanup;
     }
 
@@ -154,8 +199,7 @@ cleanup:
         ring_buffer__free(rb);
     }
     //the flow hash map & decision tree nodes array will be freed by skeleton destruction.
-    
     // Destroy the skeleton (detaches programs, closes maps)
-    net_listener_xdp_bpf__destroy(skel);
+    dt_xdp_bpf__destroy(skel);
     return 0;
 }
