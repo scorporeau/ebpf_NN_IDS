@@ -101,7 +101,7 @@ int main(int argc, char **argv)
 
 
     //infinite loop just for counting time or waiting sigkill.
-    printf("Started ! Waiting fot %d seconds or Ctrl+C to end...\n", benchmark_time);
+    printf("Started ! Waiting for %d seconds or Ctrl+C to end...\n", benchmark_time);
     while (!exiting) {
         if (benchmark_time > 0) {
             time_t t_now = time(NULL);
