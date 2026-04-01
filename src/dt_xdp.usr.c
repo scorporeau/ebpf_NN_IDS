@@ -49,7 +49,7 @@ static void print_log(void *ctx, void *data, size_t data_sz)
     char dst_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &d->src_ip, src_ip, sizeof(src_ip));
     inet_ntop(AF_INET, &d->dst_ip, dst_ip, sizeof(dst_ip));
-    printf("%-16s:%-5d|%-16s:%-5d|%-8d|%-6d|%-5s\n", src_ip, d->src_port, dst_ip, d->dst_port, d->protocol, d->packet_size, d->decision ? "PASS" : "DROP");
+    printf("%-15s:%-5d|%-15s:%-5d|%-8d|%-6d|%-5s\n", src_ip, d->src_port, dst_ip, d->dst_port, d->protocol, d->packet_size, d->decision ? "PASS" : "DROP");
 }
 
 //Fill the decision tree nodes structure located in the bpf array that the bpf program uses for IDS decision making.
@@ -140,7 +140,7 @@ int main(int argc, char const **argv)
             goto cleanup;
         }
         //print table header
-        printf("%-16s:%-5s|%-16s:%-5s|%-8s|%-6s|%-5s\n", "SRC_IP", "PORT", "DST_IP", "PORT", "SIZE","PROT", "Dec?");
+        printf("%-15s:%-5s|%-15s:%-5s|%-8s|%-6s|%-5s\n", "SRC_IP", "PORT", "DST_IP", "PORT", "PROTOC","SIZE", "Dec?");
     }
 
     //create LRU hash map & decision tree nodes array.
