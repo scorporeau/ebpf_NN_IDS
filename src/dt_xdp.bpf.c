@@ -182,11 +182,11 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     __u8 f_i;
 
     //have to use a bpf loop helper function in order to allow the ebpf program to understand taht my loop is short
-    for (__u8 j = 0; j < DT_NODE_NB; j++) {
+    for (__u8 j = 0; j <= DT_NODE_NB; j++) {
         node = bpf_map_lookup_elem(&dt_nodes_array, &i);
         //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (2nd MSB = 0): we apply the current decision.
         //  !node                                            !node                             node->feature & 0b10000000 == 0         
-        if (!node || ((node->feature & 0b01000000) == 0) || (i >= DT_NODE_NB)) {
+        if (!node || ((node->feature & 0b01000000) == 0) || (i > DT_NODE_NB)) {
             if (pass) {
                 goto pass;
             } else {
