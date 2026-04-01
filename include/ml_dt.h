@@ -3,7 +3,7 @@
 #ifndef ML_DT_H
 #define ML_DT_H
 
-#define DT_NODE_NB 64 //actual number of nodes in the implemented decision tree (will reserve array space for DT_NODE_NB nodes, etc ...)
+#define DT_NODE_NB 32 //actual number of nodes in the implemented decision tree (will reserve array space for DT_NODE_NB nodes, etc ...). 0<DT_NODE_NB<256 to fit in the __u8 structure.
 #define DEBUG true //if true, we create a ringbuffer to print logs to the user space.
 
 //decision tree node structure for ebpf.

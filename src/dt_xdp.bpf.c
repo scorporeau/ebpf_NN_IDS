@@ -146,12 +146,11 @@ SEC("xdp")
 int xdp_trace_net_event(struct xdp_md *ctx)
 {
     //1: parse the packet and update feature vector.
-    struct feature_vector fv;
+    struct feature_vector fv = {0}; //initialize feature vector to 0 to avoid issues when encountering errors
     int ret;
-    struct iphdr ipd;
+    struct iphdr ipd= (struct iphdr){0}; //initialize ipd to 0 to avoid issues when encountering errors
     if (DEBUG) {
         //with debug ip info extraction
-        ipd = (struct iphdr){0}; //initialize ipd to 0 to avoid verifier issues
         ret = parse_update(ctx, &fv, &ipd); 
     } else {
         //without debug ip ingfo extraction
@@ -176,15 +175,18 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     }
 
     //2: packet processing (decision tree).
-    int i = 0; //index of the root node of the tree.
+    __u8 i = 0; //index of the root node of the tree. u8 since it prevents the verifier to think it can be enormous while testing.
     int pass = true; //default decision = pass;
     struct dt_node *node;
-    while (i<DT_NODE_NB) {
+    __u64 feature_value;
+    __u8 f_i;
 
+    //have to use a bpf loop helper function in order to allow the ebpf program to understand taht my loop is short
+    for (__u8 j = 0; j < DT_NODE_NB; j++) {
         node = bpf_map_lookup_elem(&dt_nodes_array, &i);
         //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (2nd MSB = 0): we apply the current decision.
         //  !node                                            !node                             node->feature & 0b10000000 == 0         
-        if (!node || node->feature & 0b01000000 == 0) {
+        if (!node || ((node->feature & 0b01000000) == 0) || (i >= DT_NODE_NB)) {
             if (pass) {
                 goto pass;
             } else {
@@ -193,8 +195,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
         }
 
         //else, node is defined AND current node is not a leaf, we need to process decision and update the index.
-        __u8 f_i = node->feature & 0b00111111; //feature index is the 6 LSB
-        __u64 feature_value;
+        f_i = node->feature & 0b00111111; //feature index is the 6 LSB
         switch (f_i) {
             case 0:
                 feature_value = fv.source_port;
@@ -219,8 +220,9 @@ int xdp_trace_net_event(struct xdp_md *ctx)
                 goto pass;
         }
         if (feature_value <= node->threshold) {
+            //go left
             pass = node->feature & 0b10000000;
-            i = 2*i + 1; //go left
+            i = 2*i + 1;
         } else {
             //go right
             pass = !(node->feature & 0b10000000);
@@ -246,8 +248,8 @@ drop:
     }
     return XDP_PASS; //Not actually dropping packets, might cause issue with testing DT (drop all UDP)
 pass:
-    if (DEBUG) {
-        //create debug info and send it to the user space via ring buffer
+    if (0 && DEBUG) {
+        //create debug info and send it to the user space via ring buffer.
         struct debug_info *d = bpf_ringbuf_reserve(&events_ring, sizeof(struct debug_info), 0);
         if (d) {
             d->src_ip = ipd.saddr;
