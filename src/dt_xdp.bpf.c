@@ -164,7 +164,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     switch (ret) {
         case -2:
             //Not IP packet (this is not a bad packet, passing it.)
-            goto pass;
+            goto passsilent;
             break;
         case 0:
             //success, do nothing (feature vector will be analyzed by the decision tree for drop or pass decision.)
@@ -246,9 +246,10 @@ drop:
             bpf_ringbuf_submit(d, 0);
         }
     }
+dropsilent:
     return XDP_PASS; //Not actually dropping packets, might cause issue with testing DT (drop all UDP)
 pass:
-    if (0 && DEBUG) {
+    if (DEBUG) {
         //create debug info and send it to the user space via ring buffer.
         struct debug_info *d = bpf_ringbuf_reserve(&events_ring, sizeof(struct debug_info), 0);
         if (d) {
@@ -262,5 +263,6 @@ pass:
             bpf_ringbuf_submit(d, 0);
         }
     }
+passsilent:
     return XDP_PASS;
 }
