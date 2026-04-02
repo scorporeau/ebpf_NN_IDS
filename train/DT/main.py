@@ -18,44 +18,86 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import LabelEncoder
 
+PATHES = ["/home/sacha/Desktop/ebpf_progs/train/data/self/curr.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_DNS.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_LDAP.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_NetBIOS.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_NTP.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_SSDP.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/TFTP.csv"] #easier to store pathes directly in this script, since we will modify the features according to each CSV source.
+FEATURE_COLS = [["src_port", "dst_port", "protocol","fwd_payload_bytes_mean","fwd_payload_bytes_std","fwd_packets_IAT_mean","fwd_packets_IAT_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"]] #features columns in the CSV
+FEATURE_IDX  = {"src_port":0, "dst_port":0, "protocol":0,"fwd_payload_bytes":3,"fwd_packets_IAT":4,"fwd_payload_bytes_mean":5,
+                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3, "Fwd IAT": 4, "Fwd Packet Length Mean":5} #features ID in the C program. Must match the switch(f_i) in dt_xdp.bpf.c exactly (which normaally fits the order of features in ml_dt.h)
+LABEL_COL    = "Label" #label col has to be the same in each csv
+BENIGN_LABEL = "BENIGN" #same for benign keyword
+FEATURES_NB = 6
 
-FEATURE_COLS = ["Source Port", "Destination Port", "Protocol", "Fwd Packet Length Mean", "Fwd IAT Mean"] #features columns in the CSV
-FEATURE_IDX  = {"Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length Mean":3, "Fwd IAT Mean": 4} #features ID in the C program. Must match the switch(f_i) in dt_xdp.bpf.c exactly.
-LABEL_COL    = "Label"
-BENIGN_LABEL = "BENIGN"
-
-# Load dataset into a tuple of (X, y) where:
+# Load every datasets into a tuple of (X, y) where:
 #   X is a 2D numpy array of shape [n_samples, n_features]. CAN BE REALLY BIG
-#   y is a 1D numpy array of binary labels (0=BENIGN,
+#   y is a 1D numpy array of binary labels (0=BENIGN, 1 = malicious)
 def load_datasets(pathes) -> tuple:
-    X_parts = []
-    y_parts = []
+    X, y = np.zeros((FEATURES_NB, 0)), np.array([])
 
-    for path in pathes:
-        df = pd.read_csv(path, low_memory=False)  # fixes the DtypeWarning too
+    for (i_p,path) in enumerate(pathes):
+        #retrieve required columns
+        #read CSV and ensure there is all the columns
+        df = pd.read_csv(path, low_memory=False)
         df.columns = df.columns.str.strip()
-
-        missing = [c for c in FEATURE_COLS + [LABEL_COL] if c not in df.columns]
+        missing = [c for c in FEATURE_COLS[i_p] + [LABEL_COL] if c not in df.columns]
         if missing:
             raise ValueError(f"Missing columns in {path}: {missing}")
-
+        #drop empty lines
         df = df.dropna(subset=FEATURE_COLS + [LABEL_COL])
-
-        Xi = df[FEATURE_COLS].astype(np.float64).values
-        yi = (df[LABEL_COL].str.strip() != BENIGN_LABEL).astype(int).values
-
+        #create new Xi dataframe; will be filled later.
+        # Xi has shape (FEATURES_NB, n_samples) where each row is a feature, each col is a sample
+        Xi = np.zeros((FEATURES_NB, len(df)))
+        
+        for feat_name_csv in FEATURE_COLS[i_p]:
+            #for the columns that directly corresponds to features (are keys in the dict) : simply copy them to the dataframe (at right index : dict)
+            if feat_name_csv in FEATURE_IDX.keys():
+                feature_idx = FEATURE_IDX[feat_name_csv]
+                Xi[feature_idx, :] = df[feat_name_csv].astype(np.float64).values
+                
+            #for the columns that contains mean, std, ... (& are not keys of the dict) -> use them to reconstruct the corresponding feature
+            else:
+                # Try to find base feature by removing statistical suffixes
+                base_feat_name = feat_name_csv
+                # Remove common statistical suffixes to find base feature
+                for suffix in ["_mean", "_std", "_skew"]:
+                    if suffix in base_feat_name:
+                        base_feat_name = base_feat_name.replace(suffix, "").strip()
+                        break
+                
+                # Find matching base feature in FEATURE_IDX
+                matching_feat = None
+                for key in FEATURE_IDX.keys():
+                    if key.lower() in base_feat_name.lower() or base_feat_name.lower() in key.lower():
+                        matching_feat = key
+                        break
+                
+                # Use the statistical column as representative value (e.g., mean as per-packet estimate)
+                if matching_feat and matching_feat in FEATURE_IDX:
+                    feature_idx = FEATURE_IDX[matching_feat]
+                    Xi[feature_idx, :] = df[feat_name_csv].astype(np.float64).values
+        
+        yi = (df[LABEL_COL].str.strip() != BENIGN_LABEL).astype(int).to_numpy() #0 benign, 1 malicious
         labels = df[LABEL_COL].str.strip().unique().tolist()
         print(f"[dataset]  {path} : {len(df)} rows, {len(labels)} classes: {labels}")
         print(f"[dataset]  BENIGN: {(yi==0).sum()}  MALICIOUS: {(yi==1).sum()}")
-
-        X_parts.append(Xi)
-        y_parts.append(yi)
-
-    X = np.concatenate(X_parts, axis=0)
-    y = np.concatenate(y_parts, axis=0)
+        
+        # Append Xi and yi to the growing X and y arrays
+        X = np.hstack([X, Xi])
+        y = np.concatenate([y, yi])
+        
 
     print(f"\n[dataset]  Total: {len(y)} rows — BENIGN: {(y==0).sum()}  MALICIOUS: {(y==1).sum()}")
-    return X, y
+    return X.T, y  # Transpose X to shape [n_samples, n_features]
 
 # Train a DT.
 def train(X, y, max_depth: int) -> DecisionTreeClassifier:
