@@ -4,7 +4,7 @@ Reads a CSV with columns: SOURCE_PORT, DEST_PORT, PROTOCOL, MEAN_SIZE, LABEL
 Outputs a C header (dt_params.h) ready to be included in the BPF project.
 
 Usage:
-    max_depth: limits tree depth. Then, a many csv pathes as you want to include in the dataset.
+    max_depth: limits tree depth. The CSV pathes are directly written into the python script. Don't hesitate to modify it.
     With DT_NODE_NB = 2^(max_depth+1) - 1, a depth-6 tree needs 127 nodes.
     Keep max_depth <= 6 to stay within BPF stack limits.
 """
@@ -23,8 +23,8 @@ PATHES = ["/home/sacha/Desktop/ebpf_progs/train/data/self/curr.csv",
           "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_LDAP.csv",
           "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_NetBIOS.csv",
           "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_NTP.csv",
-          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_SSDP.csv",
-          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/TFTP.csv"] #easier to store pathes directly in this script, since we will modify the features according to each CSV source.
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_UDP.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_MSSQL.csv"] #easier to store pathes directly in this script, since we will modify the features according to each CSV source.
 FEATURE_COLS = [["src_port", "dst_port", "protocol","fwd_payload_bytes_mean","fwd_payload_bytes_std","fwd_packets_IAT_mean","fwd_packets_IAT_std"],
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
@@ -32,8 +32,8 @@ FEATURE_COLS = [["src_port", "dst_port", "protocol","fwd_payload_bytes_mean","fw
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"]] #features columns in the CSV
-FEATURE_IDX  = {"src_port":0, "dst_port":0, "protocol":0,"fwd_payload_bytes":3,"fwd_packets_IAT":4,"fwd_payload_bytes_mean":5,
-                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3, "Fwd IAT": 4, "Fwd Packet Length Mean":5} #features ID in the C program. Must match the switch(f_i) in dt_xdp.bpf.c exactly (which normaally fits the order of features in ml_dt.h)
+FEATURE_IDX  = {"src_port":0, "dst_port":1, "protocol":2,"fwd_payload_bytes":3,"fwd_packets_IAT":4,"fwd_payload_bytes_mean":5,
+                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3, "Fwd IAT": 4, "Fwd Packet Length_mean":5} #features ID in the C program. Must match the switch(f_i) in dt_xdp.bpf.c exactly (which normaally fits the order of features in ml_dt.h)
 LABEL_COL    = "Label" #label col has to be the same in each csv
 BENIGN_LABEL = "BENIGN" #same for benign keyword
 FEATURES_NB = 6
@@ -42,18 +42,17 @@ FEATURES_NB = 6
 #   X is a 2D numpy array of shape [n_samples, n_features]. CAN BE REALLY BIG
 #   y is a 1D numpy array of binary labels (0=BENIGN, 1 = malicious)
 def load_datasets(pathes) -> tuple:
-    X, y = np.zeros((FEATURES_NB, 0)), np.array([])
-
+    X_list, y_list = [], []
     for (i_p,path) in enumerate(pathes):
         #retrieve required columns
         #read CSV and ensure there is all the columns
-        df = pd.read_csv(path, low_memory=False)
+        df = pd.read_csv(path)
         df.columns = df.columns.str.strip()
         missing = [c for c in FEATURE_COLS[i_p] + [LABEL_COL] if c not in df.columns]
         if missing:
             raise ValueError(f"Missing columns in {path}: {missing}")
         #drop empty lines
-        df = df.dropna(subset=FEATURE_COLS + [LABEL_COL])
+        df = df.dropna(subset=FEATURE_COLS[i_p] + [LABEL_COL])
         #create new Xi dataframe; will be filled later.
         # Xi has shape (FEATURES_NB, n_samples) where each row is a feature, each col is a sample
         Xi = np.zeros((FEATURES_NB, len(df)))
@@ -62,7 +61,7 @@ def load_datasets(pathes) -> tuple:
             #for the columns that directly corresponds to features (are keys in the dict) : simply copy them to the dataframe (at right index : dict)
             if feat_name_csv in FEATURE_IDX.keys():
                 feature_idx = FEATURE_IDX[feat_name_csv]
-                Xi[feature_idx, :] = df[feat_name_csv].astype(np.float64).values
+                Xi[feature_idx, :] = df[feat_name_csv].astype(np.int32).values
                 
             #for the columns that contains mean, std, ... (& are not keys of the dict) -> use them to reconstruct the corresponding feature
             else:
@@ -77,40 +76,65 @@ def load_datasets(pathes) -> tuple:
                 # Find matching base feature in FEATURE_IDX
                 matching_feat = None
                 for key in FEATURE_IDX.keys():
-                    if key.lower() in base_feat_name.lower() or base_feat_name.lower() in key.lower():
+                    if key in base_feat_name or base_feat_name in key: # (Be careful about CSV features names. You can still change them easily)
                         matching_feat = key
                         break
-                
-                # Use the statistical column as representative value (e.g., mean as per-packet estimate)
-                if matching_feat and matching_feat in FEATURE_IDX:
-                    feature_idx = FEATURE_IDX[matching_feat]
-                    Xi[feature_idx, :] = df[feat_name_csv].astype(np.float64).values
+                feature_idx = FEATURE_IDX[matching_feat]
+                #if feature is not already reconstructed (because we encounter twice a parameter of the feature : mean & std)
+                if Xi[feature_idx, 0] == 0:
+                    #At this step, we found the OG feature.
+                    # Now, generate a new value for the sample using mean and std from the CSV
+                    
+                    std_col = matching_feat + "_std"
+                    mean_col = matching_feat + "_mean"
+                    Xi[feature_idx, :] = np.maximum(np.random.normal(df[mean_col].astype(np.float64), df[std_col].astype(np.float64)), 0)
+
         
         yi = (df[LABEL_COL].str.strip() != BENIGN_LABEL).astype(int).to_numpy() #0 benign, 1 malicious
         labels = df[LABEL_COL].str.strip().unique().tolist()
         print(f"[dataset]  {path} : {len(df)} rows, {len(labels)} classes: {labels}")
-        print(f"[dataset]  BENIGN: {(yi==0).sum()}  MALICIOUS: {(yi==1).sum()}")
+        nben, nmal = (yi==0).sum(), (yi==1).sum()
+        print(f"[dataset]  BENIGN: {nben}  MALICIOUS: {nmal}")
+
+        #Now, remove some malicious flows if unbalanced : max malicious flows = 10 times benign flows.
+        max_malicious = nben*10
+        if nmal > max_malicious:
+            print(f"[dataset]   Removing {nmal-max_malicious} randomly chosen Malicious samples")
+            mal_indices = np.where(yi == 1)[0]
+            to_remove = np.random.choice(mal_indices, nmal - max_malicious, replace=False)
+            all_indices = np.arange(len(yi))
+            keep_mask = ~np.isin(all_indices, to_remove)
+            Xi = Xi[:, keep_mask]
+            yi = yi[keep_mask]
+            print(f"[dataset]   removed ! we have now {(yi==0).sum()} Benign and {(yi==1).sum()} Malicious samples.")
+
         
-        # Append Xi and yi to the growing X and y arrays
-        X = np.hstack([X, Xi])
-        y = np.concatenate([y, yi])
+        # Append Xi and yi to the growing lists
+        X_list.append(Xi)
+        y_list.append(yi)
         
 
+    # hstack and cocatenate once at the end, to reduce memory usage spikes
+    print(f"[dataset]  Concatenating {len(y_list)} datasets together")
+    X = np.hstack(X_list)
+    y = np.concatenate(y_list)
+    
     print(f"\n[dataset]  Total: {len(y)} rows — BENIGN: {(y==0).sum()}  MALICIOUS: {(y==1).sum()}")
     return X.T, y  # Transpose X to shape [n_samples, n_features]
 
 # Train a DT.
 def train(X, y, max_depth: int) -> DecisionTreeClassifier:
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, stratify=y
+        X, y, test_size=0.2, stratify=y
     )
-
+    print(f"[train] training DT with {len(y_train)} train samples, {len(y_test)} test samples ...")
     clf = DecisionTreeClassifier(
         max_depth=max_depth,
-        class_weight={0: 50, 1: 1},    # handles imbalanced BENIGN/MALICIOUS ratio
+        class_weight={0: 10, 1: 1},    # handles imbalanced BENIGN/MALICIOUS ratio
         min_samples_split=500,
-        min_samples_leaf=50,
-        criterion="entropy" #better for imbalanced data
+        min_samples_leaf=100,
+        criterion="entropy", #better for imbalanced data
+        
     )
     clf.fit(X_train, y_train)
 
@@ -185,8 +209,8 @@ def export_c_header(clf: DecisionTreeClassifier, max_depth: int, out_path: str):
             pass_left = 0
             #       left child == leaf        and    decision == pass   or right child = leaf and decision == drop
             class_counts = [sk_value[sk_left[sk_i]][0], sk_value[sk_right[sk_i]][0]]
-            #comparing % of benign in left and right nodes to create pass_left boolean.
-            pass_left = (class_counts[0][1]/np.sum(class_counts[0])) > (class_counts[1][1]/np.sum(class_counts[1]))
+            #comparing values to create pass_left boolean.
+            pass_left = (class_counts[0][1]) > (class_counts[1][1])
             
             #exporting raw node values to the nodes array
             feature_byte = (pass_left << 7) | (1 << 6) | (bpf_feat_i & 0x3F)
@@ -227,11 +251,11 @@ def export_c_header(clf: DecisionTreeClassifier, max_depth: int, out_path: str):
 
 
 def main():
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 1:
         print(__doc__)
         sys.exit(1)
 
-    csv_pathes  = sys.argv[2:]
+    csv_pathes  = PATHES
     max_depth = int(sys.argv[1])
 
     # Warn if DT_NODE_NB would exceed BPF map limits
@@ -245,7 +269,7 @@ def main():
     export_c_header(clf, max_depth=clf.get_depth(), out_path="dt_params.h")
 
     #print decision tree into standard output (in order to compare with outputed dt_params.h)
-    plot_tree(clf, fontsize= 10, feature_names=FEATURE_COLS, class_names=[BENIGN_LABEL, "Malicious"])
+    plot_tree(clf, fontsize= 10, feature_names=(["S port","D port","prot","packet len","IAT",'mean packet len']), class_names=[BENIGN_LABEL, "Malicious"])
     plt.show()
 
 if __name__ == "__main__":
