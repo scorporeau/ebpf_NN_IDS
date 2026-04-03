@@ -116,7 +116,7 @@ static inline int parse_update(struct xdp_md *ctx, struct feature_vector *fv, st
         // flow already created (one packet already seen)
         //process time since last packet. !! convert to ms and __u32
         __u64 tsl = (time_now - fi->last_seen) / 1000000;
-        //handle time longer than max value of __u32 (49.7 days), by capping it to the max value.
+        //handle time longer than max value of __u32 (49.7 days ...), by capping it to the max value.
         if (tsl > 0xFFFFFFFF) {
             fv->time_since_last_packet = 0xFFFFFFFF;
         } else {
@@ -133,7 +133,7 @@ static inline int parse_update(struct xdp_md *ctx, struct feature_vector *fv, st
         //create the new flow entry
         struct flow_info new_fi = { time_now, fv->packet_size, 1 };
         bpf_map_update_elem(&flow_info_map, &flow_key, &new_fi, BPF_NOEXIST);
-        fv->time_since_last_packet = 0xFFFFFFFF; //max value, never seen this flow before
+        fv->time_since_last_packet = 0;
         fv->mean_packet_size = fv->packet_size; //only one packet seen
     }
     return 0; // success
@@ -178,15 +178,15 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     __u8 i = 0; //index of the root node of the tree. u8 since it prevents the verifier to think it can be enormous while testing.
     int pass = true; //default decision = pass;
     struct dt_node *node;
-    __u64 feature_value;
+    __u32 feature_value;
     __u8 f_i;
 
     //have to use a bpf loop helper function in order to allow the ebpf program to understand taht my loop is short
     for (__u8 j = 0; j <= DT_NODE_NB; j++) {
         node = bpf_map_lookup_elem(&dt_nodes_array, &i);
-        //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (2nd MSB = 0): we apply the current decision.
-        //  !node                                            !node                             node->feature & 0b10000000 == 0         
-        if (!node || ((node->feature & 0b01000000) == 0) || (i > DT_NODE_NB)) {
+        //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (3rd MSB = 0): we apply the current decision.
+        //  !node                                            !node                             node->feature & 0b00100000 == 0         
+        if (!node || ((node->feature & 0b00100000) == 0) || (i > DT_NODE_NB)) {
             if (pass) {
                 goto pass;
             } else {
@@ -195,7 +195,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
         }
 
         //else, node is defined AND current node is not a leaf, we need to process decision and update the index.
-        f_i = node->feature & 0b00111111; //feature index is the 6 LSB
+        f_i = node->feature & 0b00011111; //feature index is the 6 LSB
         switch (f_i) {
             case 0:
                 feature_value = fv.source_port;
@@ -225,7 +225,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
             i = 2*i + 1;
         } else {
             //go right
-            pass = !(node->feature & 0b10000000);
+            pass = node->feature & 0b01000000;
             i = 2*i + 2;
         }
     }

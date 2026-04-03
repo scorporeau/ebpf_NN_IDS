@@ -69,6 +69,7 @@ static void retrieve_dt_parameters(const char *filename, struct dt_node *dt_node
 {
     //create a basic DT that drops UDP packets, and pass everything else. Just for testing purposes.
     //the structure is the following :
+    //DEPRECATED
     /*
                 root : feature = protocol, thresh = 16.
                 /                       \
