@@ -39,11 +39,20 @@ static void sig_handler(int sig)
     exiting = 1;
 }
 
+static void init_bench_time(int argc, char **argv, int *benchmark_time) {
+    if (argc >= 2) {
+        *benchmark_time = atoi(argv[1]);
+        if (*benchmark_time < 0) {
+            fprintf(stderr, "Invalid benchmark time: %s, setting it to 0\n", argv[2]);
+            *benchmark_time = 0;
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     //parse options (benchmark time, print all)
-    struct handle_event_ctx he_ctx = init_he_ctx(argc, argv, &benchmark_time);
-    // print_all unused for now. But can be used for file printing, or smth else
+    init_bench_time(argc, argv, &benchmark_time);
 
 
     // pointer to our eBPF skeleton structure
