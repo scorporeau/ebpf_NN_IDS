@@ -5,6 +5,7 @@
 
 #define DT_NODE_NB 127 //actual number of nodes in the implemented decision tree (will reserve array space for DT_NODE_NB nodes, etc ...). 0<DT_NODE_NB<256 to fit in the __u8 structure.
 #define DEBUG true //if true, we create a ringbuffer to print logs to the user space.
+#define FEATURE_NB 6 //current number of features
 
 //decision tree node structure for ebpf.
 // child nodes indexes should be normalized in the array instead of referenced here in order to reduce stack usage (max 512 bytes in ebpf).
@@ -18,15 +19,14 @@ struct dt_node {
     __u8 feature;
 }; //40 bits = 5 bytes. Max nodes 102 (512 bytes stack) (is there padding?)
 
-#define FEATURE_NB 6 //current number of features
 struct feature_vector {
     //does not have any IPs, since it can be filtered easily by some other known IDSs.
     __u16 source_port;
     __u16 dest_port;
     __u8 protocol;
     __u16 packet_size;
-    __u32 time_since_last_packet; //for the same flow, in ms (bpf_ktime_get_ns, converted to ms). Max value = 49.7 days.
-    __u16 mean_packet_size; //for the same flow
+    __u32 time_since_last_packet; //per flow, in ms (bpf_ktime_get_ns, converted to ms). Max value = 49.7 days.
+    __u16 mean_packet_size; //per flow
 }; //tot size = 2+2+1+2+8+2 = 17 Bytes. max 30 vectors can be stored in the 512B stack. Usually we process them one at a time so its not a problem.
 
 

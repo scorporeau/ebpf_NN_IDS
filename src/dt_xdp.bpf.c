@@ -113,9 +113,15 @@ static inline int parse_update(struct xdp_md *ctx, struct feature_vector *fv, st
     __u128 flow_key = ((__u128)ip->saddr << 96) | ((__u128)fv->source_port << 80) | ((__u128)ip->daddr << 48) | ((__u128)fv->dest_port << 32);
     struct flow_info *fi = bpf_map_lookup_elem(&flow_info_map, &flow_key);
     if (fi) {
-        // flow already created (one packet already seen)
+        // flow already created (one packet already seen for this flow)
         //process time since last packet. !! convert to ms and __u32
         __u64 tsl = (time_now - fi->last_seen) / 1000000;
+        //process (new) mean packet size
+        __sync_fetch_and_add(&fi->count, 1);
+        __sync_fetch_and_add(&fi->tot_bytes, fv->packet_size);
+
+        // update feature vector with features that requires flow_info
+        fv->mean_packet_size = (__u16)(fi->tot_bytes / fi->count);
         //handle time longer than max value of __u32 (49.7 days ...), by capping it to the max value.
         if (tsl > 0xFFFFFFFF) {
             fv->time_since_last_packet = 0xFFFFFFFF;
@@ -123,16 +129,13 @@ static inline int parse_update(struct xdp_md *ctx, struct feature_vector *fv, st
             fv->time_since_last_packet = (__u32)tsl;
         }
         fi->last_seen = time_now;
-        //process (new) mean packet size
-        __sync_fetch_and_add(&fi->count, 1);
-        __sync_fetch_and_add(&fi->tot_bytes, fv->packet_size);
-        fv->mean_packet_size = (__u16)(fi->tot_bytes / fi->count);
 
         
     } else {
         //create the new flow entry
         struct flow_info new_fi = { time_now, fv->packet_size, 1 };
         bpf_map_update_elem(&flow_info_map, &flow_key, &new_fi, BPF_NOEXIST);
+        // update feature vector with features that requires flow_info
         fv->time_since_last_packet = 0;
         fv->mean_packet_size = fv->packet_size; //only one packet seen
     }
@@ -163,9 +166,8 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     //handle errors
     switch (ret) {
         case -2:
-            //Not IP packet (this is not a bad packet, passing it.)
+            //Not IP packet (this is not a bad packet, passing it silently (many not-IP packets, we want readability).)
             goto passsilent;
-            break;
         case 0:
             //success, do nothing (feature vector will be analyzed by the decision tree for drop or pass decision.)
             break;
@@ -195,7 +197,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
         }
 
         //else, node is defined AND current node is not a leaf, we need to process decision and update the index.
-        f_i = node->feature & 0b00011111; //feature index is the 6 LSB
+        f_i = node->feature & 0b00011111; //feature index are the 5 LSBs
         switch (f_i) {
             case 0:
                 feature_value = fv.source_port;

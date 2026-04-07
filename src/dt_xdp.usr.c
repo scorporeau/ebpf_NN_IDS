@@ -25,7 +25,7 @@
 #include "common.h"
 #include "common_usr.h"
 #include "ml_dt.h"
-#include "dt_params.h" //for the function to retrieve the DT parameters from a file (output of the training script).
+#include "../train/DT/dt_params.h" //for the function to retrieve the DT parameters from a file (output of the training script).
 
 // Global flag for graceful shutdown
 // Marked volatile because it's modified by signal handler
@@ -171,8 +171,18 @@ int main(int argc, char const **argv)
     printf("Started ! Waiting for %d seconds or Ctrl+C to end...\n", benchmark_time);
     while (!exiting) {
         //pull ring buffer and handle exceptions or end of benchmark time.
+        time_t t_now = time(NULL);
         if (DEBUG) {
             err = ring_buffer__poll(rb, TIMEOUT_RINGBUF_POLL /* timeout in ms */);
+            //print again header every 30s.
+            bool hdr_not_printed = true;
+            if (((t_now - t_start % 30) == 0) && hdr_not_printed) {
+                //print table header
+                printf("%-15s:%-5s|%-15s:%-5s|%-8s|%-6s|%-5s\n", "SRC_IP", "PORT", "DST_IP", "PORT", "PROTOC","SIZE", "Dec?");
+                hdr_not_printed = false;
+            } else if ((t_now - t_start % 30) == 1) {
+                hdr_not_printed = true;
+            }
         }
         if (err == -EINTR) {
             err = 0;
@@ -181,7 +191,6 @@ int main(int argc, char const **argv)
             fprintf(stderr, "Error polling ring buffer: %d\n", err);
             exiting = 1;
         } else if (benchmark_time > 0) {
-            time_t t_now = time(NULL);
             if (t_now - t_start >= benchmark_time) {
                 printf("Benchmark time of %d seconds reached, exiting...\n", benchmark_time);
                 exiting = 1;
