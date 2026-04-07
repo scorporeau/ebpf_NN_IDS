@@ -1,7 +1,7 @@
 /build
 #You have to generate your own vmlinux.h for your kernel version.
 /include/vmlinux.h
-/train/data
+/ML/data
 .vscode/
 
 # LaTeX build files & templates

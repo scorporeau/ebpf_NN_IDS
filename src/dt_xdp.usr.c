@@ -23,9 +23,8 @@
 
 //common libraries
 #include "common.h"
-#include "common_usr.h"
 #include "ml_dt.h"
-#include "../train/DT/dt_params.h" //for the function to retrieve the DT parameters from a file (output of the training script).
+#include "../ML/DT/dt_params.h" //for the function to retrieve the DT parameters from a file (output of the training script).
 
 // Global flag for graceful shutdown
 // Marked volatile because it's modified by signal handler
