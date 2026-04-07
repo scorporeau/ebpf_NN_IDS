@@ -5,8 +5,7 @@ Outputs a C header (dt_params.h) ready to be included in the BPF project.
 
 Usage:
     max_depth: limits tree depth. The CSV pathes are directly written into the python script. Don't hesitate to modify it.
-    With DT_NODE_NB = 2^(max_depth+1) - 1, a depth-6 tree needs 127 nodes.
-    Keep max_depth <= 6 to stay within BPF stack limits.
+    
 """
 
 import sys
@@ -25,6 +24,7 @@ PATHES = ["/home/sacha/Desktop/ebpf_progs/ML/data/self/curr.csv",
           "/home/sacha/Desktop/ebpf_progs/ML/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_NTP.csv",
           "/home/sacha/Desktop/ebpf_progs/ML/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_UDP.csv",
           "/home/sacha/Desktop/ebpf_progs/ML/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_MSSQL.csv"] #easier to store pathes directly in this script, since we will modify the features according to each CSV source.
+#For estimating features, MUST HAVE _mean and _std, OPTIONAL _skew, _max and _min.
 FEATURE_COLS = [["src_port", "dst_port", "protocol","fwd_payload_bytes_mean","fwd_payload_bytes_std","fwd_packets_IAT_mean","fwd_packets_IAT_std"],
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],

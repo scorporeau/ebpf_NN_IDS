@@ -6,6 +6,8 @@
 #define DT_NODE_NB 127 //actual number of nodes in the implemented decision tree (will reserve array space for DT_NODE_NB nodes, etc ...). 0<DT_NODE_NB<256 to fit in the __u8 structure.
 #define DEBUG true //if true, we create a ringbuffer to print logs to the user space.
 #define FEATURE_NB 6 //current number of features
+#define TIMEOUT_RINGBUF_POLL 50 //ms, timeout for ring buffer wait in case of empty buffer.
+
 
 //decision tree node structure for ebpf.
 // child nodes indexes should be normalized in the array instead of referenced here in order to reduce stack usage (max 512 bytes in ebpf).

@@ -18,7 +18,7 @@
 
 // Our shared definitions (same file used by eBPF program)
 #include "common.h"
-#include "common_usr.h"
+#include "common_usr_net_listener.h"
 
 
 //benchmark time, in s, 0 means no end (until ctrl+c, or kill)
