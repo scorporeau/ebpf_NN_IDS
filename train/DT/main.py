@@ -20,20 +20,21 @@ from sklearn.preprocessing import LabelEncoder
 
 PATHES = ["/home/sacha/Desktop/ebpf_progs/train/data/self/curr.csv",
           "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_DNS.csv",
-#          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_LDAP.csv",
-#          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_NetBIOS.csv",
-#          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_NTP.csv",
-#          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_UDP.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_LDAP.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_NetBIOS.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_NTP.csv",
+          "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_UDP.csv",
           "/home/sacha/Desktop/ebpf_progs/train/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_MSSQL.csv"] #easier to store pathes directly in this script, since we will modify the features according to each CSV source.
 FEATURE_COLS = [["src_port", "dst_port", "protocol","fwd_payload_bytes_mean","fwd_payload_bytes_std","fwd_packets_IAT_mean","fwd_packets_IAT_std"],
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
-#                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
-#                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
-#                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
-#                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"]] #features columns in the CSV
 FEATURE_IDX  = {"src_port":0, "dst_port":1, "protocol":2,"fwd_payload_bytes":3,"fwd_packets_IAT":4,"fwd_payload_bytes_mean":5,
                 "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3, "Fwd IAT": 4, "Fwd Packet Length_mean":5} #features ID in the C program. Must match the switch(f_i) in dt_xdp.bpf.c exactly (which normaally fits the order of features in ml_dt.h)
+FEATURE_NAMES = ["S port","D port","prot","packet len","IAT",'mean packet len'] #Feature names, in the same order as the C file (& above)
 LABEL_COL    = "Label" #label col has to be the same in each csv
 BENIGN_LABEL = "BENIGN" #same for benign keyword
 FEATURES_NB = 6
@@ -197,7 +198,7 @@ def DT_export_c_header(clf: DecisionTreeClassifier, max_depth: int, out_path: st
 
             # Map sklearn feature index to our BPF feature index
             bpf_feat_i = sk_feat_i  # same order since we control FEATURE_COLS
-            threshold  = np.int32(round(sk_threshold[sk_i]))
+            threshold  = np.int32(round(sk_threshold[sk_i]-0.5)) #round DOWN (<=)
 
             #find pass_left and pass_right decisions
             values_childs = [[sk_value[sk_left[sk_i]][0][0], sk_value[sk_left[sk_i]][0][1]],[sk_value[sk_right[sk_i]][0][0], sk_value[sk_right[sk_i]][0][1]]]
@@ -207,7 +208,7 @@ def DT_export_c_header(clf: DecisionTreeClassifier, max_depth: int, out_path: st
             pass_right = (values_childs[1][0]) > (values_childs[1][1])
             
             #exporting raw node values to the nodes array
-            feature_byte = (pass_left << 7) | (pass_right << 6) | (1 << 5) | (bpf_feat_i & 0x1F)
+            feature_byte = (pass_left << 7) | (pass_right << 6) | (1 << 5) | (bpf_feat_i & 0b00011111)
             nodes[bfs_i] = (feature_byte, threshold)
 
             #next DT nodes : left, then right childs.
@@ -227,13 +228,13 @@ def DT_export_c_header(clf: DecisionTreeClassifier, max_depth: int, out_path: st
         f.write("static struct dt_node trained_dt_nodes[] = {\n")
         for i, (feat, thresh) in enumerate(nodes):
             is_leaf     = (feat & 0b00100000) == 0
-            pass_left   =  feat & 0b10000000
-            pass_right  =  feat & 0b01000000
-            feat_idx    = feat & 0x1F
+            pass_left   =  feat & 0b10000000 >> 7
+            pass_right  =  feat & 0b01000000 >> 6
+            feat_idx    =  feat & 0b00011111
             comment = (
-                f"leaf"
+                f"leaf / undef"
                 if is_leaf
-                else f"feat={feat_idx} thresh={thresh} pass_left={pass_left} pass_right = {pass_right}"
+                else f"feat={FEATURE_NAMES[feat_idx]} thresh={thresh} pass_left={pass_left} pass_right = {pass_right}"
             )
             f.write(f"    {{ .feature = 0x{feat:02X}, .threshold = {thresh} }},  // [{i}] {comment}\n")
         f.write("};\n")
@@ -256,15 +257,15 @@ def main():
     # Warn if DT_NODE_NB would exceed BPF map limits
     max_nodes = 2 ** (max_depth + 1) - 1
     print(f"[config]  max_depth={max_depth}  →  DT_NODE_NB={max_nodes}")
-    if max_nodes > 127:
-        print(f"[warning] DT_NODE_NB={max_nodes} is large — consider max_depth <= 6")
+    if max_nodes > 255:
+        print(f"[warning] DT_NODE_NB={max_nodes} may be too large for ebpf — consider max_depth <= 8")
 
     X, y = load_datasets(csv_pathes)
     clf  = DT_train(X, y, max_depth)
     #print decision tree into standard output (in order to compare with outputed dt_params.h)
-    plot_tree(clf, fontsize= 10, feature_names=(["S port","D port","prot","packet len","IAT",'mean packet len']), class_names=[BENIGN_LABEL, "Malicious"])
-    plt.show()
-    DT_export_c_header(clf, max_depth=clf.get_depth()-1, out_path="dt_params.h") #removing 1 from depth since we are not storing the leaf nodes (nodes without threshold are not sent to bpf)
+    plot_tree(clf, feature_names=(FEATURE_NAMES), class_names=[BENIGN_LABEL, "Malicious"])
+    plt.savefig("/home/sacha/Desktop/ebpf_progs/train/DT/dt_params.png",dpi= 600)
+    DT_export_c_header(clf, max_depth=clf.get_depth()-1, out_path="/home/sacha/Desktop/ebpf_progs/train/DT/dt_params.h") #removing 1 from depth since we are not storing the leaf nodes (nodes without threshold are not sent to bpf, decision to drop or pass is stored in the parent node.)
 
 if __name__ == "__main__":
     main()
