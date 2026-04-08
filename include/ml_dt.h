@@ -1,10 +1,11 @@
 //Decision tree handling for IDS implementation in ebpf
 
-#ifndef ML_DT_H
-#define ML_DT_H
+#ifndef __ML_DT_H
+#define __ML_DT_H
 
-#define DT_NODE_NB 127 //actual number of nodes in the implemented decision tree (will reserve array space for DT_NODE_NB nodes, etc ...). 0<DT_NODE_NB<256 to fit in the __u8 structure.
+#define DT_NODE_NB 128 //actual number of nodes in the implemented decision tree (will reserve array space for DT_NODE_NB nodes, etc ...). 0<DT_NODE_NB<256 to fit in the __u8 structure.
 #define TIMEOUT_RINGBUF_POLL 50 //ms, timeout for ring buffer wait in case of empty buffer.
+#define DEBUG true //if true, we create a ringbuffer to print logs to the user space.
 
 
 //decision tree node structure for ebpf.
@@ -15,7 +16,7 @@ struct dt_node {
     __u32 threshold; 
     //index of the feature to split on.
     //Also, because we need less than 8 bites to store feature #, the two MSB can be used to flag leaves, and decision (pass left or pass right).
-    //first bit : 1 = pass left, 0 = pass right. second bit : 0 = leaf/undefined node, 1 = defined node.
+    //first bit : pass left, 2nd bit: pass right, 3rd bit: 0 = leaf/undefined node, 1 = defined node.
     __u8 feature;
 }; //40 bits = 5 bytes. Max nodes 102 (512 bytes stack) (is there padding?)
 
