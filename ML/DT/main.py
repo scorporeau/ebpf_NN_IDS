@@ -33,9 +33,7 @@ FEATURE_COLS = [["src_port", "dst_port", "protocol","fwd_payload_bytes_mean","fw
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
                 ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"]] #features columns in the CSV
 FEATURE_IDX  = {"src_port":0, "dst_port":1, "protocol":2,"fwd_payload_bytes":3,"fwd_packets_IAT":4,"fwd_payload_bytes_mean":5,
-                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3, "Fwd IAT": 4, "Fwd Packet Length_mean":5} #INTERNAL TO THIS PYTHON
-FEATURE_ID_C = {"src_port":1, "dst_port":1<<1, "protocol":1<<2,"fwd_payload_bytes":3,"fwd_packets_IAT":4,"fwd_payload_bytes_mean":5,
-                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3, "Fwd IAT": 4, "Fwd Packet Length_mean":5}
+                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3, "Fwd IAT": 4, "Fwd Packet Length_mean":5} #Theses number SHALL BE in the range 0->(FEATURES_NB-1). Every index should also be in the croissant order, according to features int definitions in /include/features.h
 FEATURE_NAMES = ["S port","D port","prot","packet len","IAT",'mean packet len'] #Feature names, in the same order as the C file (& above)
 LABEL_COL    = "Label" #label col has to be the same in each csv
 BENIGN_LABEL = "BENIGN" #same for benign keyword

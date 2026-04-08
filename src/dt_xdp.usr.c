@@ -25,6 +25,7 @@
 #include "common.h"
 #include "ml_dt.h"
 #include "../ML/DT/dt_params.h" //for the function to retrieve the DT parameters from a file (output of the training script).
+#include "common_usr_net_listener.h"
 
 // Global flag for graceful shutdown
 // Marked volatile because it's modified by signal handler
@@ -146,7 +147,7 @@ int main(int argc, char const **argv)
 
     //create ring buffer for debug logs
     if (DEBUG) {
-        rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_log,NULL,NULL);
+        rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,NULL,NULL);
         if (!rb) {
             fprintf(stderr, "Failed to create ring buffer\n");
             goto cleanup;
@@ -180,6 +181,7 @@ int main(int argc, char const **argv)
     printf("Started ! Waiting for %d seconds or Ctrl+C to end...\n", benchmark_time);
     while (!exiting) {
         //pull ring buffer and handle exceptions or end of benchmark time.
+        err = 0;
         time_t t_now = time(NULL);
         if (DEBUG) {
             err = ring_buffer__poll(rb, TIMEOUT_RINGBUF_POLL /* timeout in ms */);
