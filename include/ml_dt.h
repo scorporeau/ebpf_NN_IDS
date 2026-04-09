@@ -31,15 +31,4 @@ struct feature_vector {
 }; //tot size = 2+2+1+2+8+2 = 17 Bytes. max 30 vectors can be stored in the 512B stack. Usually we process them one at a time so its not a problem.
 
 
-//debug information thal will be sent to user space if DEBUG == true
-struct debug_info {
-    __u32 src_ip;
-    __u32 dst_ip;
-    __u16 src_port;
-    __u16 dst_port;
-    __u8 protocol;
-    __u16 packet_size;
-    bool decision; //1 = pass, 0 = drop
-};
-
 #endif /* ML_DT_H */

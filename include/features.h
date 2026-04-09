@@ -20,14 +20,14 @@
 #define F_D_IP      (1 << 4)
 #define F_S_IP      (1 << 5)
 
-//flow features
+//flow features STD NOT IMPLEMENTED (need too much computations in the ebpf)
 #define F_IAT_MEAN  ((1 << 0) << 64) //feature 64
 #define F_IAT_TOT   ((1 << 1) << 64) //feature 65
-#define F_IAT_STD   ((1 << 2) << 64) //...
+#define F_IAT_STD   ((1 << 2) << 64)
 #define F_SIZE_MEAN ((1 << 3) << 64)
 #define F_SIZE_TOT  ((1 << 4) << 64)
 #define F_SIZE_STD  ((1 << 5) << 64)
-#define F_PKT_TOT_N ((1 << 6) << 64)
-#define F_PKT_TOT_S ((1 << 7) << 64)
+#define F_PKT_NB    ((1 << 6) << 64)
+#define F_IAT       ((1 << 7) << 64)
 
 #endif

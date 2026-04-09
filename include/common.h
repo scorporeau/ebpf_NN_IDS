@@ -54,6 +54,7 @@ struct ip_count {
 struct flow_info {
     __u64 last_seen; //timestamp of the last packet seen for this flow in ns since boot (bpf_ktime_get_ns).
     __u64 tot_bytes; //total bytes seen for this flow
+    __u64 tot_IAT; //counter for the total IAT observed along the flow
     __u32 count; //number of packets in this flow
 }; 
 

@@ -61,7 +61,7 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
     // retrieving packet data, size and timestamp
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
-    __u64 time_now = bpf_ktime_get_ns();
+    __u64 time_now = bpf_ktime_get_ns(); //time when the packet was recieved in ns
 
     //1 parse eth header
     struct ethhdr *eth = data;
@@ -86,19 +86,13 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
         nete->dst_ip = ip->daddr;
         nete->src_ip = ip->saddr;
         nete->protocol = ip->protocol;
-        nete->packet_size = (__u16)(data_end - data);
+        nete->packet_size = (data_end - data);
     }
 
 
     //5 : fill feature vector (and / or debug info) with packet-based features.
-    if ((FEATURES & F_PROTOCOL) != 0) {
-        //if protocol is part of the features:
-        fv[get_feature_vector_index(FEATURES, FEATURE_NB, F_PROTOCOL)] = ip->protocol;
-    }
-    if ((FEATURES & F_PKT_SIZE) != 0) {
-        //if packet size is part of the features:
-        fv[get_feature_vector_index(FEATURES, FEATURE_NB, F_PKT_SIZE)] = (__u16)(data_end - data);
-    }
+    fvifupdate(fv, F_PROTOCOL, ip->protocol);
+    fvifupdate(fv, F_PKT_SIZE, (data_end - data));
     //retrieving ports (TCP or UDP only) only if : ports features needed OR flow features needed (port is in folw ID) OR debug
     __u16 sport;
     __u16 dport;
@@ -125,54 +119,51 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
             nete->dst_port = dport;
             nete->src_port = sport;
         }
-
-        if ((FEATURES & F_D_PORT) != 0) {
-            //if protocol is part of the features:
-            fv[get_feature_vector_index(FEATURES, FEATURE_NB, F_D_PORT)] = dport;
-        }
-        if ((FEATURES & F_S_PORT) != 0) {
-            //if packet size is part of the features:
-            fv[get_feature_vector_index(FEATURES, FEATURE_NB, F_S_PORT)] = sport;
-        }
+        fvifupdate(fv, F_D_PORT, dport);
+        fvifupdate(fv, F_S_PORT, sport);
     }
 
 
-    //6 : fill feature vector with flow-based features.
+    //6 : fill feature vector with flow-based features, if needed.
     if ((FEATURES & F_RANGE_FLOW) != 0) {
         __u128 flow_key = ((__u128)ip->saddr << 96) | ((__u128)sport << 80) | ((__u128)ip->daddr << 48) | ((__u128)dport << 32);
-    }
+        struct flow_info *fi = bpf_map_lookup_elem(&flow_info_map, &flow_key);
+        if (fi) { //flow exists
+            // update flow
+            __u64 iat_ms =(__u64)(time_now - fi->last_seen) / 1000000; // ns to ms
+            fi->last_seen = time_now; //ns
+            __sync_fetch_and_add(&fi->count, 1);
+            __sync_fetch_and_add(&fi->tot_bytes, (data_end - data));
+            __sync_fetch_and_add(&fi->tot_IAT, iat_ms);
+            
+            // update feature vector with necessary features:
+            fvifupdate(fv, F_SIZE_MEAN, (__u32)(fi->tot_bytes / fi->count));
+            fvifupdate(fv, F_SIZE_TOT, fi->tot_bytes);
+            fvifupdate(fv, F_PKT_NB, fi->count);
+            fvifupdate(fv, F_IAT, iat_ms > 0xFFFFFFFF ? 0xFFFFFFFF : (__u32)iat_ms);
+            fvifupdate(fv, F_IAT_TOT, fi->tot_IAT);
+            fvifupdate(fv, F_IAT_MEAN, (__u32)(fi->tot_IAT / fi->count));
 
 
+        } else { //flow does not exists
+            //create the new flow entry
+            struct flow_info new_fi =   {   time_now, //last_packet
+                                            (data_end - data), //tot size
+                                            0, //tot IAT
+                                            1 //packet nb
+                                        }; 
+            bpf_map_update_elem(&flow_info_map, &flow_key, &new_fi, BPF_NOEXIST);
 
-
-    //5 retrieve & update flow information, then fill the rest of feature vector.
-    
-    struct flow_info *fi = bpf_map_lookup_elem(&flow_info_map, &flow_key);
-    if (fi) {
-        // flow already created (one packet already seen for this flow)
-        //process time since last packet. !! convert to ms and __u32
-        __u64 tsl = (time_now - fi->last_seen) / 1000000;
-        //process (new) mean packet size
-        __sync_fetch_and_add(&fi->count, 1);
-        __sync_fetch_and_add(&fi->tot_bytes, fv->packet_size);
-
-        // update feature vector with features that requires flow_info
-        fv->mean_packet_size = (__u16)(fi->tot_bytes / fi->count);
-        //handle time longer than max value of __u32 (49.7 days ...), by capping it to the max value.
-        if (tsl > 0xFFFFFFFF) {
-            fv->time_since_last_packet = 0xFFFFFFFF;
-        } else {
-            fv->time_since_last_packet = (__u32)tsl;
+            // update feature vector with features that requires flow_info
+            fvifupdate(fv, F_SIZE_MEAN, (data_end - data));
+            fvifupdate(fv, F_SIZE_TOT, (data_end - data));
+            fvifupdate(fv, F_PKT_NB, 1);
+            fvifupdate(fv, F_IAT, 0);
+            fvifupdate(fv, F_IAT_TOT, 0);
+            fvifupdate(fv, F_IAT_MEAN, 0);
         }
-        fi->last_seen = time_now;
-    } else {
-        //create the new flow entry
-        struct flow_info new_fi = { time_now, fv->packet_size, 1 };
-        bpf_map_update_elem(&flow_info_map, &flow_key, &new_fi, BPF_NOEXIST);
-        // update feature vector with features that requires flow_info
-        fv->time_since_last_packet = 0;
-        fv->mean_packet_size = fv->packet_size; //only one packet seen
     }
+
     return 0; // success
 }
 
@@ -210,18 +201,22 @@ static inline int classify_dt(__u32 fv[]) {
     }
 }
 
-//return feature index in the feature vector, given the feature descriptor (128-bit vector), the features total number, and the wanted feature index unique's ID (ex: F_S_PORT)
-static inline int get_feature_vector_index(int features, int feature_nb, int feature) {
+//update feature vector with value if, and only if, feature is needed
+static void fvifupdate(__u32 *feature_vector, __u128 feature, __u32 newval) {
     int index = 0;
-    for (int curr_f = 1; curr_f <= feature; curr_f = curr_f << 1)
-    {
-        //loop for each feature, starting from the LSB features.
-        if ((curr_f & features) != 0) {
-            // if this feature is present in the chosen features :
-            index++;
+    if ((FEATURES & feature) != 0) {
+        //retrieving feature index
+        for (int curr_f = 1; curr_f <= feature; curr_f = curr_f << 1)
+        {
+            //loop for each feature, starting from the LSB features.
+            if ((curr_f & FEATURES) != 0) {
+                // if this feature is present in the chosen features :
+                index++;
+            }
         }
+        //updating vector
+        feature_vector[index] = newval;
     }
-    return index;
 }
 
 //XDP network listener main function
