@@ -54,6 +54,23 @@ struct {
     __uint(max_entries, DEBUG ? 1024*16 : 0); //16KB
 } events_ring SEC(".maps");
 
+//update feature vector with value if, and only if, feature is needed
+static void fvifupdate(__u32 *feature_vector, __u128 feature, __u32 newval) {
+    int index = 0;
+    if ((FEATURES & feature) != 0) {
+        //retrieving feature index
+        for (int curr_f = 1; curr_f <= feature; curr_f = curr_f << 1)
+        {
+            //loop for each feature, starting from the LSB features.
+            if ((curr_f & FEATURES) != 0) {
+                // if this feature is present in the chosen features :
+                index++;
+            }
+        }
+        //updating vector
+        feature_vector[index] = newval;
+    }
+}
 
 // parse the packet located in the context, and fill flow_info_map and the feature vector with the required information.
 static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *nete) 
@@ -201,23 +218,6 @@ static inline int classify_dt(__u32 fv[]) {
     }
 }
 
-//update feature vector with value if, and only if, feature is needed
-static void fvifupdate(__u32 *feature_vector, __u128 feature, __u32 newval) {
-    int index = 0;
-    if ((FEATURES & feature) != 0) {
-        //retrieving feature index
-        for (int curr_f = 1; curr_f <= feature; curr_f = curr_f << 1)
-        {
-            //loop for each feature, starting from the LSB features.
-            if ((curr_f & FEATURES) != 0) {
-                // if this feature is present in the chosen features :
-                index++;
-            }
-        }
-        //updating vector
-        feature_vector[index] = newval;
-    }
-}
 
 //XDP network listener main function
 SEC("xdp")
@@ -257,16 +257,20 @@ int xdp_trace_net_event(struct xdp_md *ctx)
 
 drop:
     if (DEBUG) {
-        if (bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), &ne)) {
-            bpf_ringbuf_submit(&ne, 0);
+        struct netevent *ne_rb = bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), 0);
+        if (ne_rb) {
+            ne_rb = &ne;
+            bpf_ringbuf_submit(&ne_rb, 0);
         }
     }
 dropsilent:
     return XDP_PASS; //Not actually dropping packets, might cause issue while testing
 pass:
     if (DEBUG) {
-        if (bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), &ne)) {
-            bpf_ringbuf_submit(&ne, 0);
+        struct netevent *ne_rb = bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), 0);
+        if (ne_rb) {
+            ne_rb = &ne;
+            bpf_ringbuf_submit(&ne_rb, 0);
         }
     }
 passsilent:
