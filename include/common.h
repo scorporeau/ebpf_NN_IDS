@@ -43,6 +43,7 @@ struct netevent {
     __u8 protocol;      // IPPROTO_TCP (6), IPPROTO_UDP (17)
     __u32 packet_size;  // bytes
     __u32 pid;          // Process that owns the socket
+    bool decision;      // 0 = drop, 1 = pass
 };
 
 // structure for counting information (tot bytes and number of packets processed) per IP pair

@@ -56,7 +56,7 @@ struct {
 
 
 // parse the packet located in the context, and fill flow_info_map and the feature vector with the required information.
-static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *nete) //TODO: update with netevent use and remove the debug_info structure
+static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *nete) 
 {
     // retrieving packet data, size and timestamp
     void *data = (void *)(long)ctx->data;
@@ -227,7 +227,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     //struct feature_vector fv = {0}; //initialize feature vector to 0 to avoid issues when encountering errors
     __u32 fv[FEATURE_NB];//create a FEATURE_NB sized array of __u32 for registering the features of our analyzed packet.
     int ret;
-    struct netevent ne = (struct netevent){0}; //initialize ipd to 0 to avoid issues when encountering errors
+    struct netevent ne = (struct netevent){0}; //initialize net event to 0 to avoid issues when encountering errors
 
     //parse the packet & update the feature vector
     switch (DEBUG ? parse_update(ctx, fv, &ne) : parse_update(ctx, fv, NULL)) {
@@ -257,36 +257,16 @@ int xdp_trace_net_event(struct xdp_md *ctx)
 
 drop:
     if (DEBUG) {
-        //create debug info and send it to the user space via ring buffer
-        struct debug_info *d = bpf_ringbuf_reserve(&events_ring, sizeof(struct debug_info), 0);
-        //TODO fill with netevent instead of this new redondant debug_info struct
-        if (d) {
-            d->src_ip = ipd.saddr;
-            d->dst_ip = ipd.daddr;
-            d->src_port = fv.source_port;
-            d->dst_port = fv.dest_port;
-            d->packet_size = fv.packet_size;
-            d->protocol = fv.protocol;
-            d->decision = false; //drop
-            bpf_ringbuf_submit(d, 0);
+        if (bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), &ne)) {
+            bpf_ringbuf_submit(&ne, 0);
         }
     }
 dropsilent:
     return XDP_PASS; //Not actually dropping packets, might cause issue while testing
 pass:
     if (DEBUG) {
-        //TODO fill with netevent instead of this new redondant debug_info struct
-        //create debug info and send it to the user space via ring buffer.
-        struct debug_info *d = bpf_ringbuf_reserve(&events_ring, sizeof(struct debug_info), 0);
-        if (d) {
-            d->src_ip = ipd.saddr;
-            d->dst_ip = ipd.daddr;
-            d->src_port = fv.source_port;
-            d->dst_port = fv.dest_port;
-            d->packet_size = fv.packet_size;
-            d->protocol = fv.protocol;
-            d->decision = true; //pass
-            bpf_ringbuf_submit(d, 0);
+        if (bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), &ne)) {
+            bpf_ringbuf_submit(&ne, 0);
         }
     }
 passsilent:

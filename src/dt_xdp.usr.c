@@ -44,7 +44,7 @@ static void sig_handler(int sig)
 
 static void print_log(void *ctx, void *data, size_t data_sz)
 {
-    struct debug_info *d = data;
+    struct netevent *d = data;
     char src_ip[INET_ADDRSTRLEN];
     char dst_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &d->src_ip, src_ip, sizeof(src_ip));
@@ -83,12 +83,12 @@ static void retrieve_dt_parameters(const char *filename, struct dt_node *dt_node
     
     dt_nodes_array[0] = (struct dt_node) {
         //root node in the graph
-        .feature = 0b11000010, //feature 2 (protocol), pass left, defined node
+        .feature = 0b10100010, //feature 2 (protocol), pass left, defined node
         .threshold = 16
     };
     dt_nodes_array[2] = (struct dt_node) {
         //node 2 in the graph
-        .feature = 0b01000010, //feature 2, pass right, defined node.
+        .feature = 0b01100010, //feature 2, pass right, defined node.
         .threshold = 17
     };
     */
