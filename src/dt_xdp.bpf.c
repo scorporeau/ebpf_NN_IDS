@@ -41,7 +41,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     // Maximum number of entries in the map (adjust as needed)
-    __uint(max_entries, (((FEATURES & F_RANGE_FLOW) != 0) ? 2048 : 0));
+    __uint(max_entries, (((FEATURES & F_RANGE_FLOW) != 0) ? 2048 : 1));
     // Key is a __u128 of combined source_ip (32), source_port(16), dest_ip (32), dest_port (16), plus 32 filler bits. (not optimal)
     __type(key, __u128);
     // Value is a struct ip_count containing the count and total bytes
