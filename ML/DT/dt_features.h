@@ -2,5 +2,5 @@
 #include "../include/project_features.h"
 
 //S port, D port, protocol, packet size
-#define FEATURES (F_S_PORT & F_D_PORT & F_PROTOCOL & F_PKT_SIZE)
+#define FEATURES (F_S_PORT | F_D_PORT | F_PROTOCOL | F_PKT_SIZE)
 #define FEATURE_NB 4

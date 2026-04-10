@@ -91,7 +91,7 @@ static void retrieve_dt_parameters(const char *filename, struct dt_node *dt_node
     };
     dt_nodes_array[2] = (struct dt_node) {
         //node 2 in the graph
-        .feature = 0b01100010, //feature 2, pass right, defined node.
+        .feature = 0b01100010, //drop left, pass right, defined node, feature 2
         .threshold = 17
     };
     */
@@ -111,6 +111,9 @@ static void init_bench_time(int argc, char **argv, int *benchmark_time) {
 
 int main(int argc, char const **argv)
 {
+    //0 some debug tests / prints
+    printf("\n[start] Starting dt_xdp program ...\n\tfeature uids vector   : %d\n\tflow based features   : %d\n\tpacket based features : %d\n", FEATURES, FEATURES & F_RANGE_FLOW, FEATURES & F_RANGE_PACKET);
+
     struct dt_xdp_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
     int err;
@@ -173,7 +176,7 @@ int main(int argc, char const **argv)
 
     //fill decision tree nodes
     //create array of dt nodes later filled by a function reading parameters from a file outputed by pytorch)
-    struct dt_node dt_nodes_array[DT_NODE_NB];
+    struct dt_node dt_nodes_array[DT_NODE_NB] = {}; //init to zero !!!
     retrieve_dt_parameters("filename.csv", dt_nodes_array);
     if (fill_dt_nodes_array(dt_nodes_array_fd, dt_nodes_array)) {
         fprintf(stderr, "Failed to fill decision tree nodes array\n");

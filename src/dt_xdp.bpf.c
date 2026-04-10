@@ -57,9 +57,9 @@ struct {
 //update feature vector with value if, and only if, feature is needed
 static void fvifupdate(__u32 *feature_vector, __u128 feature, __u32 newval) {
     int index = 0;
-    if ((FEATURES & feature) != 0) {
+    if ((FEATURES & feature) != 0) { // if feature is used
         //retrieving feature index
-        for (int curr_f = 1; curr_f <= feature; curr_f = curr_f << 1)
+        for (__u64 curr_f = 1; curr_f < feature;curr_f <<= 1)
         {
             //loop for each feature, starting from the LSB features.
             if ((curr_f & FEATURES) != 0) {
@@ -185,7 +185,7 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
 static inline int classify_dt(__u32 fv[]) {
     //packet processing (decision tree).
     __u32 i = 0; //index of the root node of the tree. key type is __u32 for dt_nodes_array, but it will never be that big.
-    int pass = true; //default decision = pass;
+    bool pass = true; //default decision = pass;
     struct dt_node *node;
     __u32 feature_value;
 
@@ -223,7 +223,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
 {
     //1: parse the packet and update feature vector.
     //struct feature_vector fv = {0}; //initialize feature vector to 0 to avoid issues when encountering errors
-    __u32 fv[FEATURE_NB];//create a FEATURE_NB sized array of __u32 for registering the features of our analyzed packet.
+    __u32 fv[FEATURE_NB] = {};//create a FEATURE_NB sized array of __u32 for registering the features of our analyzed packet.
     int ret;
     struct netevent *ne;
     if (DEBUG) {
@@ -260,6 +260,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
 
 drop:
     if (ne) {
+        ne ->decision = 0;
         bpf_ringbuf_submit(ne, 0);
     }
     return XDP_PASS; //Not actually dropping packets, might cause issue while testing
@@ -270,6 +271,7 @@ dropsilent:
     return XDP_PASS; //Not actually dropping packets, might cause issue while testing
 pass:
     if (ne) {
+        ne ->decision = 1;
         bpf_ringbuf_submit(ne, 0);
     }
     return XDP_PASS;

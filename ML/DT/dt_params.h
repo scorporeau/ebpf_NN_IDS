@@ -4,29 +4,19 @@
 //#define DT_NODE_NB 15
 
 static struct dt_node trained_dt_nodes[] = {
-    { .feature = 0xA5, .threshold = 210 },  // [0] feat=mean packet len thresh=210 pass_left=1 pass_right = 1
-    { .feature = 0xE0, .threshold = 32392 },  // [1] feat=S port thresh=32392 pass_left=0 pass_right = 0
-    { .feature = 0xA1, .threshold = 443 },  // [2] feat=D port thresh=443 pass_left=1 pass_right = 1
-    { .feature = 0xA0, .threshold = 488 },  // [3] feat=S port thresh=488 pass_left=0 pass_right = 0
-    { .feature = 0xE1, .threshold = 38 },  // [4] feat=D port thresh=38 pass_left=1 pass_right = 1
-    { .feature = 0x61, .threshold = 442 },  // [5] feat=D port thresh=442 pass_left=1 pass_right = 1
-    { .feature = 0xA0, .threshold = 512 },  // [6] feat=S port thresh=512 pass_left=0 pass_right = 0
-    { .feature = 0xE0, .threshold = 101 },  // [7] feat=S port thresh=101 pass_left=0 pass_right = 0
-    { .feature = 0x60, .threshold = 992 },  // [8] feat=S port thresh=992 pass_left=0 pass_right = 0
-    { .feature = 0x00, .threshold = 0 },  // [9] leaf / undef
-    { .feature = 0xE2, .threshold = 11 },  // [10] feat=prot thresh=11 pass_left=0 pass_right = 0
-    { .feature = 0xA0, .threshold = 522 },  // [11] feat=S port thresh=522 pass_left=0 pass_right = 0
-    { .feature = 0xE0, .threshold = 44809 },  // [12] feat=S port thresh=44809 pass_left=0 pass_right = 0
-    { .feature = 0x00, .threshold = 0 },  // [13] leaf / undef
-    { .feature = 0x21, .threshold = 5353 },  // [14] feat=D port thresh=5353 pass_left=1 pass_right = 1
+    { .feature = 0b10100010, .threshold = 16 }, //protocol feature : 3rd feature in the vector so index 2
+    { .feature = 0x00, .threshold = 0},            //placeholder node.
+    { .feature = 0b01100010, .threshold = 17 } 
 };
-/*
-              precision    recall  f1-score   support
+    /*
+                root : feature = protocol, thresh = 16.
+                /                       \
+                <=16                      >16
+               /                           \
+            PASS              node 2: feature = protocol, thresh = 17
+                                    /               \
+                               ==17                  > 17
+                                /                       \
+                            DROP                        PASS
 
-      BENIGN       0.97      1.00      0.98      6036
-   MALICIOUS       1.00      1.00      1.00     50498
-
-    accuracy                           1.00     56534
-   macro avg       0.98      1.00      0.99     56534
-weighted avg       1.00      1.00      1.00     56534
-*/
+    */
