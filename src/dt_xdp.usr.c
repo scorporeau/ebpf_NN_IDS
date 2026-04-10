@@ -11,6 +11,8 @@
 #include <signal.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <time.h>
+#include <net/if.h>
 
 
 
@@ -25,7 +27,8 @@
 #include "common.h"
 #include "ml_dt.h"
 #include "../ML/DT/dt_params.h" //for the function to retrieve the DT parameters from a file (output of the training script).
-#include "common_usr_net_listener.h"
+#include "../ML/DT/dt_features.h"
+#include "project_features.h"
 
 // Global flag for graceful shutdown
 // Marked volatile because it's modified by signal handler
@@ -147,7 +150,7 @@ int main(int argc, char const **argv)
 
     //create ring buffer for debug logs
     if (DEBUG) {
-        rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,NULL,NULL);
+        rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_log,NULL,NULL);
         if (!rb) {
             fprintf(stderr, "Failed to create ring buffer\n");
             goto cleanup;
