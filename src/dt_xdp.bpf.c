@@ -33,8 +33,8 @@ char LICENSE[] SEC("license") = "GPL";
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __type(value, struct dt_node);
-    __type(key, __u32); //key is always a __u32 (docs.ebpf.io)
-    __uint(max_entries, DT_NODE_NB); //can store 2*DT_NODE_NB+1 to enable hot_updates (first node will have an unreferenced feature index and be "the boolean")
+    __type(key, __u32); //key is always a __u32 (docs.ebpf.io) but we will use a __u8 in our case (casted to a __u32.)
+    __uint(max_entries, DT_NODE_NB); 
 } dt_nodes_array SEC(".maps");
 
 //Flow LRU hashmap, to process per-flow features (mean_packet_size & time_since_last_packet). In theory, will only be useful if there is some features that requires flow (FEATURES >> 64 != 0)
@@ -111,8 +111,8 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
     fvifupdate(fv, F_PROTOCOL, ip->protocol);
     fvifupdate(fv, F_PKT_SIZE, (data_end - data));
     //retrieving ports (TCP or UDP only) only if : ports features needed OR flow features needed (port is in folw ID) OR debug
-    __u16 sport;
-    __u16 dport;
+    __u16 sport = 0;
+    __u16 dport = 0;
     if ((FEATURES & (F_S_PORT | F_D_PORT)) || ((FEATURES & F_RANGE_FLOW) != 0) || nete) {
         if (ip->protocol == IPPROTO_TCP) {
             struct tcphdr *tcp = data + sizeof(struct ethhdr) + sizeof(struct iphdr);
@@ -128,9 +128,6 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
             }
             sport = bpf_ntohs(udp->source);
             dport = bpf_ntohs(udp->dest);
-        } else {
-            sport = 0;
-            dport = 0;
         }
         if (nete) {
             nete->dst_port = dport;
@@ -187,16 +184,16 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
 // classify the feature vector, reurns DROP (0) or PASS (1)
 static inline int classify_dt(__u32 fv[]) {
     //packet processing (decision tree).
-    __u8 i = 0; //index of the root node of the tree. u8 since it prevents the verifier to think it can be enormous while testing.
+    __u32 i = 0; //index of the root node of the tree. key type is __u32 for dt_nodes_array, but it will never be that big.
     int pass = true; //default decision = pass;
     struct dt_node *node;
     __u32 feature_value;
 
-    //have to use a bpf loop helper function in order to allow the ebpf program to understand taht my loop is short
-    for (__u8 j = 0; j <= DT_NODE_NB; j *= 2) {
-        node = bpf_map_lookup_elem(&dt_nodes_array, &i);
+    //have to use a bounded loop in order to allow the ebpf program to understand taht my loop is short (not enough LOL, it stills detect an infinite loop)
+    for (__u8 j = 0; j <= 16; j += 1) {
         //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (3rd MSB = 0): we apply the current decision.
-        if (!node || ((node->feature & 0b00100000) == 0) || (i > DT_NODE_NB)) {
+        //__u32 i_u32 = (__u32) i; //Array keys are always __u32, but we actually need only a __u8
+        if ((i >= DT_NODE_NB) || !(node = bpf_map_lookup_elem(&dt_nodes_array, &i)) || ((node->feature & 0b00100000) == 0)) {
             if (pass) {
                 return 1; //pass
             } else {
@@ -205,7 +202,8 @@ static inline int classify_dt(__u32 fv[]) {
         }
 
         //else, node is defined AND current node is not a leaf, we need to process decision and update the index.
-        feature_value = fv[node->feature & 0x1F]; //index in the vector is directly equal to the index stored in the DT nodes
+
+        feature_value = ((node->feature & 0x1F) < FEATURE_NB) ? fv[node->feature & 0x1F] : 0; //index in the vector is directly equal to the index stored in the DT nodes. More prevention needed in order not to return any error if a wrong index is uploaded into the node.
         if (feature_value <= node->threshold) {
             //go left
             pass = node->feature & 0b10000000;
@@ -227,10 +225,15 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     //struct feature_vector fv = {0}; //initialize feature vector to 0 to avoid issues when encountering errors
     __u32 fv[FEATURE_NB];//create a FEATURE_NB sized array of __u32 for registering the features of our analyzed packet.
     int ret;
-    struct netevent ne = (struct netevent){0}; //initialize net event to 0 to avoid issues when encountering errors
+    struct netevent *ne;
+    if (DEBUG) {
+        ne = bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), 0);
+    } else {
+        ne = NULL; //initialize net event to 0 to avoid issues when encountering errors
+    }
 
     //parse the packet & update the feature vector
-    switch (DEBUG ? parse_update(ctx, fv, &ne) : parse_update(ctx, fv, NULL)) {
+    switch (parse_update(ctx, fv, ne)) {
         case -2:
             //Not IP packet (this is not a bad packet, passing it silently (many not-IP packets, we want readability).)
             goto passsilent;
@@ -256,23 +259,23 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     }
 
 drop:
-    if (DEBUG) {
-        struct netevent *ne_rb = bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), 0);
-        if (ne_rb) {
-            ne_rb = &ne;
-            bpf_ringbuf_submit(&ne_rb, 0);
-        }
+    if (ne) {
+        bpf_ringbuf_submit(ne, 0);
     }
+    return XDP_PASS; //Not actually dropping packets, might cause issue while testing
 dropsilent:
+    if (ne) {
+        bpf_ringbuf_discard(ne, 0);
+    }
     return XDP_PASS; //Not actually dropping packets, might cause issue while testing
 pass:
-    if (DEBUG) {
-        struct netevent *ne_rb = bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), 0);
-        if (ne_rb) {
-            ne_rb = &ne;
-            bpf_ringbuf_submit(&ne_rb, 0);
-        }
+    if (ne) {
+        bpf_ringbuf_submit(ne, 0);
     }
+    return XDP_PASS;
 passsilent:
+    if (ne) {
+        bpf_ringbuf_discard(ne, 0);
+    }
     return XDP_PASS;
 }
