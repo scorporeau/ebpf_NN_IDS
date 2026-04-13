@@ -17,6 +17,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from sklearn.preprocessing import LabelEncoder
 
+#pathes & columns to retrieve from CSV
 PATHES = ["/home/sacha/Desktop/ebpf_progs/ML/data/self/curr.csv",
           "/home/sacha/Desktop/ebpf_progs/ML/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_DNS.csv",
           "/home/sacha/Desktop/ebpf_progs/ML/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_LDAP.csv",
@@ -25,24 +26,25 @@ PATHES = ["/home/sacha/Desktop/ebpf_progs/ML/data/self/curr.csv",
           "/home/sacha/Desktop/ebpf_progs/ML/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_UDP.csv",
           "/home/sacha/Desktop/ebpf_progs/ML/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_MSSQL.csv"] #easier to store pathes directly in this script, since we will modify the features according to each CSV source.
 #For estimating features, MUST HAVE _mean and _std, OPTIONAL _skew, _max and _min.
-FEATURE_COLS = [["src_port", "dst_port", "protocol","fwd_payload_bytes_mean","fwd_payload_bytes_std","fwd_packets_IAT_mean","fwd_packets_IAT_std"],
-                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol", "Fwd IAT_mean", "Fwd IAT_std", "Fwd Packet Length_mean", "Fwd Packet Length_std"]] #features columns in the CSV
-FEATURE_IDX  = {"src_port":0, "dst_port":1, "protocol":2,"fwd_payload_bytes":3,"fwd_packets_IAT":4,"fwd_payload_bytes_mean":5,
-                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3, "Fwd IAT": 4, "Fwd Packet Length_mean":5} #Theses number SHALL BE in the range 0->(FEATURES_NB-1). Every index should also be in the croissant order, according to features int definitions in /include/features.h
-FEATURE_NAMES = ["S port","D port","prot","packet len","IAT",'mean packet len'] #Feature names, in the same order as the C file (& above)
+FEATURE_COLS = [["src_port", "dst_port", "protocol" ,"fwd_segment_size_mean","fwd_segment_size_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"]] #features columns in the CSV
+
+#Now, features informations to transmit to the bpf program
+FEATURE_IDX  = {"src_port":0, "dst_port":1, "protocol":2,"fwd_segment_size":3,
+                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3} #Theses number SHALL BE in the range 0->(FEATURES_NB-1). Every index should also be in the croissant order, according to features int definitions in /include/project_features.h (such as they can be reconstructed by fvifupdate in dt_xdp.bpf.c)
+FEATURE_NAMES = ["F_S_PORT","F_D_PORT","F_PROTOCOL","F_PKT_SIZE"] #Feature names, in the same order as above. Strings should correspond exactly to project_features.h definitions
 LABEL_COL    = "Label" #label col has to be the same in each csv
 BENIGN_LABEL = "BENIGN" #same for benign keyword
-FEATURES_NB = 6
 
 # Load every datasets into a tuple of (X, y) where:
 #   X is a 2D numpy array of shape [n_samples, n_features]. CAN BE REALLY BIG
 #   y is a 1D numpy array of binary labels (0=BENIGN, 1 = malicious)
-def load_datasets(pathes) -> tuple:
+def load_datasets(pathes, outpath=None) -> tuple:
     X_list, y_list = [], []
     for (i_p,path) in enumerate(pathes):
         #retrieve required columns
@@ -56,7 +58,7 @@ def load_datasets(pathes) -> tuple:
         df = df.dropna(subset=FEATURE_COLS[i_p] + [LABEL_COL])
         #create new Xi dataframe; will be filled later.
         # Xi has shape (FEATURES_NB, n_samples) where each row is a feature, each col is a sample
-        Xi = np.zeros((FEATURES_NB, len(df)))
+        Xi = np.zeros((len(FEATURE_NAMES), len(df)))
         
         for feat_name_csv in FEATURE_COLS[i_p]:
             #for the columns that directly corresponds to features (are keys in the dict) : simply copy them to the dataframe (at right index : dict)
@@ -113,8 +115,7 @@ def load_datasets(pathes) -> tuple:
         # Append Xi and yi to the growing lists
         X_list.append(Xi)
         y_list.append(yi)
-        
-
+    
     # hstack and cocatenate once at the end, to reduce memory usage spikes
     print(f"[dataset]  Concatenating {len(y_list)} datasets together")
     X = np.hstack(X_list)
@@ -196,10 +197,8 @@ def DT_export_c_header(clf: DecisionTreeClassifier, max_depth: int, out_path: st
         
         #non leaf nodes :
         else:
-            sk_feat_i = sk_feature[sk_i]
-
-            # Map sklearn feature index to our BPF feature index
-            bpf_feat_i = sk_feat_i  # same order since we control FEATURE_COLS
+            # Map sklearn feature index & threshold to our BPF index & threshold
+            bpf_feat_i = sk_feature[sk_i]  # same order since we control FEATURE_IDX
             threshold  = np.int32(round(sk_threshold[sk_i]-0.5)) #round DOWN (<=)
 
             #find pass_left and pass_right decisions
@@ -248,14 +247,20 @@ def DT_export_c_header(clf: DecisionTreeClassifier, max_depth: int, out_path: st
             f.write("*/")
 
     print(f"\n[export]  Written to {out_path}dt_params.h  ({max_nodes} nodes)")
-    print(f"[export]  Add to dt_xdp.usr.c:")
-    print(f'          #include "dt_params.h"')
 
     # ── Write dt_features.h ───────────────────────────────────────────────────────
     with open(out_path+"dt_features.h", "w") as f:
-        feature_vector = 0
-        for feature_name in 
-
+        f.write("// Auto-generated by main.py.\n")
+        f.write("// Include this file in dt_xdp.xdp.c to load the feature vector descriptor.\n\n")
+        f.write(f"#define FEATURE_NB {len(FEATURE_NAMES)}\n")
+        f.write("#define FEATURES (")
+        for i in range(len(FEATURE_NAMES)):
+            f.write(f"{FEATURE_NAMES[i]}")
+            if i<(len(FEATURE_NAMES)-1):
+                f.write("|")
+        f.write(")\n")
+    
+    print(f"\n[export]  Written to {out_path}dt_features.h  ({len(FEATURE_NAMES)} features)")
 
 def main():
     if len(sys.argv) < 1:
