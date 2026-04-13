@@ -33,7 +33,7 @@
 \usepackage[inline]{enumitem}
 \usepackage{xcolor}
 \usepackage{booktabs}
-\usepackage[pdfauthor={Maximilian Bachl, Joachim Fabini, Tanja Zseby}]{hyperref}
+\usepackage[pdfauthor={Sacha Corporeau}]{hyperref}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{graphicx}
@@ -56,15 +56,42 @@
     \IEEEauthorblockA{Student at Télécom SudParis \& Intern at Loria\\
     sacha.corporeau@loria.fr}
 }
+%\date{\today}
 
 \maketitle
 
+\newacronym{ml}{ML}{Machine Learning}
+\newacronym{ids}{IDS}{Intrusion Detection System}
+\newacronym{xdp}{XDP}{eXpress Data Paths}
+\newacronym{ebpf}{eBPF}{extended BPF}
+\newacronym{snic}{sNIC}{smart Network Interface Card}
+\newacronym{mlp}{MLP}{Multi-Layer Perceptron}
+\newacronym{nn}{NN}{Neural Network}
+
 \begin{abstract}
-    TODO
+    Throughout the last 10 years, we have seen many papers exploring \gls{ebpf} in order to implement various things. One of the studied fields is \gls{ids} which uses \gls{ebpf}'s \gls{xdp} in order to implement packet filtration inside the linux kernel. In parallel, the growing use of \gls{snic} with \gls{xdp} offloading allows to run bigger \gls{ebpf} scripts without impacting the host machine's CPU. In this paper, we purpose different implementations for many \gls{ml} techniques applied to \gls{ids} with \gls{xdp} scripts. We analyzed all kind of performances for each \gls{ml} technique that we choose to implement in \gls{ebpf}.
+
 \end{abstract}
 
 
+\section{State-of-the-art}
+
+First, This works is heavily motivated by \cite{rajurkar_packets_2025} which highlight that \gls{ml} in \gls{ebpf} has some non-negligible constraints but has to be studied in-depth because of the huge benefits that \gls{snic}s offloading can afford. This paper reviewed many \gls{ebpf}-based \gls{ids} papers published between 2019 and 2025. It has identified 5 main challenges faced during many \gls{ids} implementation in \gls{ebpf} :
+\begin{itemize}
+    \item Verifier constraints and in-kernel programmability
+    \item Cross-kernel portability
+    \item \gls{ml} integration complexity
+    \item Observability vs. privacy trade-offs
+    \item Resource efficiency at scale
+\end{itemize}
+
+Zhang et. al \cite{zhang_real-time_2024} purposed an implementaion of a \gls{mlp} in-kernel making use of \gls{ebpf}'s tailing to allow the execution of a \gls{mlp} with three hidden layers, each of size 32. They focused on optimizing their method in order to archieve performances "comparable to the best \gls{ebpf}-based method". They also implemented a way to hot-update the \gls{nn} parameters, in order to allow 100\% runtime of the \gls{ids} \gls{ebpf} program, thus preventing intrusion while rebooting the program.
 
 
 
-\end{document}
+
+\bibliographystyle{ieeetr}
+\bibliography{eBPF_on_smartNIC}
+
+
+\end{document} 
