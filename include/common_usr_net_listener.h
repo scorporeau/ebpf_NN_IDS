@@ -56,7 +56,8 @@ static void print_netevent_header(bool printall)
 {
     if (printall) {
         //header printing, then let the print_netevent function do its work
-        printf("%-4s %-15s:%-8s %-15s:%-8s %-8s %-8s|%-8s %-8s %-8s\n","n", "ipS", "portS","ipD","portD","prot","size","parsing", "class","total(ns)");
+        //printf("%-4s %-15s:%-8s %-15s:%-8s %-8s %-8s|%-8s %-8s %-8s\n","n", "ipS", "portS","ipD","portD","prot","size","parsing", "class","total(ns)");
+        printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n","n", "ipS", "portS","ipD","portD","prot","size","parsing", "class","total(ns)");
     } else {
         printf("%-4s\n", "N");
     }
@@ -76,7 +77,7 @@ static int print_netevent(void *ctx, void *data, size_t data_sz)
         fprintf(stderr, "Error: event size mismatch\n");
         return 0;
     }
-
+    /*
     // Determine protocol string
     char protocol_str[16];
     if (e->protocol == 6) {
@@ -86,10 +87,12 @@ static int print_netevent(void *ctx, void *data, size_t data_sz)
     } else {
         snprintf(protocol_str, sizeof(protocol_str), "%u", e->protocol);
     }
+    */
 
     if (event_ctx->print_all) {
         //print informations (the IPs with dots for readability)
-        printf("%-4i %-3u.%-3u.%-3u.%-3u:%-8u %-3u.%-3u.%-3u.%-3u:%-8u %-8s %-8u|%-8u %-8u %-8u\n",
+        //printf("%-4i %-3u.%-3u.%-3u.%-3u:%-8u %-3u.%-3u.%-3u.%-3u:%-8u %-8s %-8u|%-8u %-8u %-8u\n",
+        printf("%i,%u.%u.%u.%u,%u,%u.%u.%u.%u,%u,%u,%u,%u,%u,%u\n",
             event_ctx->n_events,
             (e->src_ip) & 0xFF,
             (e->src_ip >> 8) & 0xFF,
@@ -101,7 +104,7 @@ static int print_netevent(void *ctx, void *data, size_t data_sz)
             (e->dst_ip >> 16) & 0xFF,
             (e->dst_ip >> 24) & 0xFF,
             e->dst_port,
-            protocol_str,
+            e->protocol,
             e->packet_size,
             e->t_parsing,
             e->t_classification,
