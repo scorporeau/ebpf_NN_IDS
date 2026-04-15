@@ -57,7 +57,7 @@ static void print_netevent_header(bool printall)
     if (printall) {
         //header printing, then let the print_netevent function do its work
         //printf("%-4s %-15s:%-8s %-15s:%-8s %-8s %-8s|%-8s %-8s %-8s\n","n", "ipS", "portS","ipD","portD","prot","size","parsing", "class","total(ns)");
-        printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n","n", "ipS", "portS","ipD","portD","prot","size","parsing", "class","total(ns)");
+        printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n","n", "ipS", "portS","ipD","portD","protocol","size","time_parsing", "time_class","time_total");
     } else {
         printf("%-4s\n", "N");
     }
