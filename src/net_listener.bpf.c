@@ -36,16 +36,20 @@ struct {
 SEC("tp/net/net_dev_start_xmit")
 int trace_net_dev_start_xmit(struct trace_event_raw_net_dev_start_xmit *ctx)
 {
+    void *skb_data;
+    __u64 t0 = bpf_ktime_get_ns();
     struct netevent *e;
     struct iphdr iph_data;
     struct tcphdr tcph_data;
     struct udphdr udph_data;
-    void *skb_data;
-
+    //reserve space in the ring buffer
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
-        return 0;
+        // ERROR: ringbuf null, pass packet
+        return TCX_PASS;
     }
+    __u64 t1 = bpf_ktime_get_ns();
+
     // Access the sk_buff structure from tracepoint
     struct sk_buff *skb = ctx->skbaddr;
     
@@ -71,21 +75,26 @@ int trace_net_dev_start_xmit(struct trace_event_raw_net_dev_start_xmit *ctx)
         
         // Parse TCP/UDP based on protocol
         if (e->protocol == IPPROTO_TCP) {
-            if (bpf_probe_read_kernel(&tcph_data, sizeof(tcph_data), 
-                                      transport_header) < 0) {
-                goto submit;
+            if (bpf_probe_read_kernel(&tcph_data, sizeof(tcph_data), transport_header) < 0) {
+                goto submit; // too short for tcp header
             }
             e->src_port = ((tcph_data.source & 0xFF) << 8) | ((tcph_data.source >> 8) & 0xFF);
             e->dst_port = ((tcph_data.dest & 0xFF) << 8) | ((tcph_data.dest >> 8) & 0xFF);
         } else if (e->protocol == IPPROTO_UDP) {
-            if (bpf_probe_read_kernel(&udph_data, sizeof(udph_data), 
-                                      transport_header) < 0) {
-                goto submit;
+            if (bpf_probe_read_kernel(&udph_data, sizeof(udph_data), transport_header) < 0) {
+                goto submit; // too short for udp header
             }
             e->src_port = ((udph_data.source & 0xFF) << 8) | ((udph_data.source >> 8) & 0xFF);
             e->dst_port = ((udph_data.dest & 0xFF) << 8) | ((udph_data.dest >> 8) & 0xFF);
         }
     }
+
+    __u64 t2 = bpf_ktime_get_ns();
+    e->t_parsing = ((t2 - t1) >= 0xFFFF ? 0xFFFF : (__u16) t2-t1);
+    e->t_tot = ((t2 - t0) >= 0xFFFF ? 0xFFFF : (__u16) t2-t0);
+    e->t_classification = 0; //not relevant here
+    e->decision = 0; //not relevant here
+
 
 submit:
     bpf_ringbuf_submit(e, 0);

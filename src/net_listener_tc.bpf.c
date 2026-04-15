@@ -37,26 +37,23 @@ struct {
 SEC("tc/ingress")
 int tc_trace_net_event(struct __sk_buff *skb)
 {
+    __u64 t0 = bpf_ktime_get_ns();
     struct netevent *e;
     struct iphdr ip_data;
     struct tcphdr tcp_data;
     struct udphdr udp_data;
-
-
-    void *data = (void *)(long)skb->data;
-    void *data_end = (void *)(long)skb->data_end;
-
-
     //reserve space in the ring buffer
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
         // ERROR: ringbuf null, pass packet
         return TCX_PASS;
     }
+    __u64 t1 = bpf_ktime_get_ns();
+
+    void *data = (void *)(long)skb->data;
+    void *data_end = (void *)(long)skb->data_end;
 
     //initialize event structure with packet information contained in the __sk_buff structure
-    //and the pid directly from the kernel
-    e->pid = bpf_get_current_pid_tgid() >> 32;
     e->packet_size = skb->len;
 
     //parsing packet for IPs and ports informations (forced in TC)
@@ -106,10 +103,12 @@ int tc_trace_net_event(struct __sk_buff *skb)
         e-> src_port = 0;
         e-> dst_port = 0;
     }
-
-
     
-
+    __u64 t2 = bpf_ktime_get_ns();
+    e->t_parsing = ((t2 - t1) >= 0xFFFF ? 0xFFFF : (__u16) t2-t1);
+    e->t_tot = ((t2 - t0) >= 0xFFFF ? 0xFFFF : (__u16) t2-t0);
+    e->t_classification = 0; //not relevant here
+    e->decision = 0; //not relevant here
 submit:
     bpf_ringbuf_submit(e, 0);
     return TCX_PASS;

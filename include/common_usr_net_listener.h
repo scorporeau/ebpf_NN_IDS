@@ -51,6 +51,17 @@ struct handle_event_ctx init_he_ctx(int argc, char **argv, int *benchmark_time) 
     };
 }
 
+//print netevent header once before printing everything else.
+static void print_netevent_header(bool printall)
+{
+    if (printall) {
+        //header printing, then let the print_netevent function do its work
+        printf("%-4s %-15s:%-8s %-15s:%-8s %-8s %-8s|%-8s %-8s %-8s\n","n", "ipS", "portS","ipD","portD","prot","size","parsing", "class","total(ns)");
+    } else {
+        printf("%-4s\n", "N");
+    }
+}
+
 //handle recieving network event function (prints packet info on terminal)
 static int print_netevent(void *ctx, void *data, size_t data_sz)
 {
@@ -78,7 +89,7 @@ static int print_netevent(void *ctx, void *data, size_t data_sz)
 
     if (event_ctx->print_all) {
         //print informations (the IPs with dots for readability)
-        printf("%-4i %-3u.%-3u.%-3u.%-3u:%-8u %-3u.%-3u.%-3u.%-3u:%-8u %-8s %-8u %-8u\n",
+        printf("%-4i %-3u.%-3u.%-3u.%-3u:%-8u %-3u.%-3u.%-3u.%-3u:%-8u %-8s %-8u|%-8u %-8u %-8u\n",
             event_ctx->n_events,
             (e->src_ip) & 0xFF,
             (e->src_ip >> 8) & 0xFF,
@@ -92,7 +103,9 @@ static int print_netevent(void *ctx, void *data, size_t data_sz)
             e->dst_port,
             protocol_str,
             e->packet_size,
-            e->pid);
+            e->t_parsing,
+            e->t_classification,
+            e->t_tot);
     } else {
         printf("%-4i\n", event_ctx->n_events);
     }

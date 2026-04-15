@@ -54,9 +54,6 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
     //registering packet size
     e->packet_size = data_end - data;
 
-    // get the PID of the process that owns the socket
-    e->pid = bpf_get_current_pid_tgid() >> 32; 
-
     //check the eth header
     struct ethhdr *eth = data;
     if (eth + 1 > data_end) {
@@ -107,17 +104,26 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
 SEC("xdp")
 int xdp_trace_net_event(struct xdp_md *ctx)
 {
+    __u64 t0 = bpf_ktime_get_ns();
     struct netevent *e;
-
-    // Reserve space in the ring buffer for our event structure
+    //reserve space in the ring buffer
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
-        //ringbuf null, pass packet
-        return XDP_PASS;
+        // ERROR: ringbuf null, pass packet
+        return TCX_PASS;
     }
+    __u64 t1 = bpf_ktime_get_ns();
+
 
     //parse the packet into the event structure, returning error codes (as protocol) if parsing fails :
     int err = parse_pack(ctx, e);
+
+    __u64 t2 = bpf_ktime_get_ns();
+    e->t_parsing = ((t2 - t1) >= 0xFFFF ? 0xFFFF : (__u16) t2-t1);
+    e->t_tot = ((t2 - t0) >= 0xFFFF ? 0xFFFF : (__u16) t2-t0);
+    e->t_classification = 0; //not relevant here
+    e->decision = 0; //not relevant here
+    
     if (err == -1) {
         e->protocol = 201; // Packet too short
         goto submit;
@@ -135,7 +141,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
         e->protocol = 205; // Packet too short for UDP header
         goto submit;
     }
-
+    
 submit:
     //add the code here to drop or pass de packet
 

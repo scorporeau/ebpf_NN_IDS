@@ -101,12 +101,7 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    if (he_ctx.print_all) {
-        //header printing, then let the print_netevent function do its work
-        printf("%-4s %-15s:%-8s %-15s:%-8s %-8s %-8s %-8s\n","n", "ipS", "portS","ipD","portD","prot","size","pid");
-    } else {
-        printf("%-4s\n", "N");
-    }
+    print_netevent_header(he_ctx.print_all);
     
 
     //"infinite" loop to listen to the ring
