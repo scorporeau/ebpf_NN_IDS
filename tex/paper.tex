@@ -87,7 +87,56 @@ First, This works is heavily motivated by \cite{rajurkar_packets_2025} which hig
 
 Zhang et. al \cite{zhang_real-time_2024} purposed an implementaion of a \gls{mlp} in-kernel making use of \gls{ebpf}'s tailing to allow the execution of a \gls{mlp} with three hidden layers, each of size 32. They focused on optimizing their method in order to archieve performances "comparable to the best \gls{ebpf}-based method". They also implemented a way to hot-update the \gls{nn} parameters, in order to allow 100\% runtime of the \gls{ids} \gls{ebpf} program, thus preventing intrusion while rebooting the program.
 
+Then, \cite{hara_practicality_2024} purposed a more detailed \gls{mlp} implementation, while comparing user-space and kernel-space behaviors, with the use of AF\_XDP. More generally, they made a survey on all \gls{ml}-\gls{ebpf} based-papers, and all the optimizations around it (such as quantization, offloading on \gls{snic}s, \dots).
 
+
+\begin{table}
+    \caption{Comparison of the different \gls{ml}-based \gls{ids} implemented so far} \label{tab:ids_type}
+    \centering
+    \begin{tabular}{rl}
+        \toprule
+        Text &\gls{ids} type \\
+        \midrule
+        \text{Zhang et al. \cite{zhang_real-time_2024}} & Flow-based \\
+        \text{Hara and Sasabe \cite{hara_practicality_2024}} & Flow-based \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+While reading about \gls{ml}-based \gls{ids} in \gls{ebpf}, we saw two different implementations for the \gls{ids}. Flow-based and Packet-based \gls{ids}. This is a critical choice when implementing \gls{ids} because Flow-based detection constraints the \gls{ebpf} program to use a significant part of the maps (often with a LRU Hash map) to register flow informations. A comparison of the techniques used so far is provided in \autoref{tab:ids_type}.
+
+\section{Objectives}
+The aims of this work is to evaluate different performances of \gls{ml}-based \gls{ids} in \gls{ebpf} with all kind of possibilities. Different kernel hooks, memory optimisation, \dots
+
+The second objective is to evaluate and study \gls{snic}s offloading of theses programs with some proof-of concept and performance evaluation.
+
+\subsection{Different ML types}
+TODO
+
+\begin{itemize}
+    \item model choice : DT, RF, CNN, MLP, \dots
+    \item Flow-based or Packet-based \gls{ids}
+\end{itemize}
+
+\subsection{SmartNIC offloading}
+
+TODO
+Look at bibliography \& test on \gls{snic}.
+
+\section{Protocol}
+
+In order to measure execution time and throughput of each designed ebpf script, we had to develop a strict protocol to apply. As said, we are measuring two different things in order to evaluate each script and version of it.
+
+\subsection{Benchmark}
+
+In order to benchmark connexion between pairs machines, we used two VMs in a proxmox cluster, both running Ubuntu 24.04 'Noble Numbat' with kernel 6.8.0-110-generic. The first server with ip 172.16.6.2 and second with ip 172.16.6.3.
+They are virtually connected together with a theoratically 5Gbps interface, bu we will see what is the max throughput archieved in the results.
+
+\subsection{Measuring}
+
+In order to measure throughput, iperf3 showed to be an efficient and easy-to-use module in order to emulate max throughput \cite{bachl_flow-based_2022}.
+
+Then, we also wanted to measure execution time of code parts. Each ebpf script used is divided in 2 parts : parsing and classification. We ran many different tests, the results are showed in the according section.
 
 
 \bibliographystyle{ieeetr}

@@ -22,6 +22,8 @@ The code is outputed in the `/build` directory.
 
 Then, to run any of your script, you can execute its corresponding binary file. The binary of file `first_main.usr.c` is located in `./build/first_main` (the binary need admin privileges to attach the eBPF program).
 
+My project was built & runned with the linux kernel version 6.17.0-20-generic
+
 # Coding new programs
 
 
