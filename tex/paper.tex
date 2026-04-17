@@ -123,20 +123,43 @@ TODO
 TODO
 Look at bibliography \& test on \gls{snic}.
 
-\section{Protocol}
 
-In order to measure execution time and throughput of each designed ebpf script, we had to develop a strict protocol to apply. As said, we are measuring two different things in order to evaluate each script and version of it.
-
-\subsection{Benchmark}
+\section{Results}
 
 In order to benchmark connexion between pairs machines, we used two VMs in a proxmox cluster, both running Ubuntu 24.04 'Noble Numbat' with kernel 6.8.0-110-generic. The first server with ip 172.16.6.2 and second with ip 172.16.6.3.
 They are virtually connected together with a theoratically 5Gbps interface, bu we will see what is the max throughput archieved in the results.
 
-\subsection{Measuring}
+\subsection{First Benchmark}
 
-In order to measure throughput, iperf3 showed to be an efficient and easy-to-use module in order to emulate max throughput \cite{bachl_flow-based_2022}.
+First benchmark is a throughput Benchmark, analyzing max throughput archieved while running simple net\_listener scripts.
 
-Then, we also wanted to measure execution time of code parts. Each ebpf script used is divided in 2 parts : parsing and classification. We ran many different tests, the results are showed in the according section.
+In order to measure throughput, iperf3 showed to be an efficient and easy-to-use module in order to emulate max throughput \cite{bachl_flow-based_2022}. For each measurment, we ran five 30s iperf benchmarks with 10 parallel clients from the same server. The results are showed in \autoref{tab:results1}.
+
+\begin{table}
+    \caption{Results from the first benchmark on parsing times \& maximum throughput} \label{tab:results1}
+    \centering
+    \begin{tabular}{ccc}
+        \toprule
+        tracepoint & TC & XDP \\
+        \midrule
+
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Second benchmark}
+
+Then, we also wanted to measure execution time of code parts. Each ebpf script used is divided in 2 parts : parsing and classification. We carefuly noted kernel timestamps obtained with the ebpf helper function bpf\_ktime\_get\_ns. Now, we wanted to analyze the parsing time for the same network packets. Since the TC and XDP scirpts were completely able to run in parallel, the results shown under for theses two scritps were done with (almost) the exact same packets. Since running \gls{xdp} natively (not offloaded, but in the NIC driver) prevents the tracepoint netif\_receive\_skb to fire (I do not really know exactly why for now), we had to re\-run the same benchmark for the net\_listener.bpf script apart from the others. This can lead to more imprecision in the interpretation of the results, but because the tracepoint approach was provided only for a comparison (since it is not able to pass or drop packets with \gls{ebpf}), this is not a concern.
+
+The packets sent during theses parsing times benchmark came from multiple sources :
+\begin{itemize}
+    \item ssh connection to my personal computer in order to launch and monitor the scripts
+    \item another iperf3 throughput test similar to the one in the first benchmark
+    \item tcpreplay used to replay pcaps of \cite{noauthor_cicddos2019_2019}
+\end{itemize}
+
+The results are shown in this log-histogram of parsing and total processing time per packet.
+
 
 
 \bibliographystyle{ieeetr}
