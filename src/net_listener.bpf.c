@@ -7,6 +7,7 @@
 
 // libbpf helper macros for CO-RE and BPF operations
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
 // CO-RE helper macros for reading kernel structures safely
 // BPF_CORE_READ handles field offset relocations automatically
@@ -33,70 +34,89 @@ struct {
 } events_ring SEC(".maps");
 
 
-SEC("tp/net/net_dev_start_xmit")
-int trace_net_dev_start_xmit(struct trace_event_raw_net_dev_start_xmit *ctx)
+SEC("tracepoint/net/netif_receive_skb")
+int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
 {
-    void *skb_data;
-    __u64 t0 = bpf_ktime_get_ns();
+    __u64 t0 = bpf_ktime_get_ns();  
+
     struct netevent *e;
-    struct iphdr iph_data;
-    struct tcphdr tcph_data;
-    struct udphdr udph_data;
-    //reserve space in the ring buffer
+    struct iphdr ip_data = {};
+    struct tcphdr tcp_data = {};
+    struct udphdr udp_data = {};
+    struct sk_buff *skb = (struct sk_buff *)ctx->skbaddr; //retrieving 
+
+    // Reserve space in the ring buffer
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
-        // ERROR: ringbuf null, pass packet
-        return TCX_PASS;
+        return 0;
     }
-    __u64 t1 = bpf_ktime_get_ns();
 
-    // Access the sk_buff structure from tracepoint
-    struct sk_buff *skb = ctx->skbaddr;
-    
-    // Get packet data start (kernel pointer)
-    BPF_CORE_READ_INTO(&skb_data, skb, data);
-    BPF_CORE_READ_INTO(&e->packet_size, skb, len);
-    
-    // Use the network_offset from context to find the IP header
-    void *ip_header = skb_data + ctx->network_offset;
-    
-    // Read IP header from kernel memory using bpf_probe_read_kernel
-    if (bpf_probe_read_kernel(&iph_data, sizeof(iph_data), ip_header) < 0) {
-        goto submit;
+    __u64 t1 = bpf_ktime_get_ns(); // -------- start parsing
+
+    //initialize event structure with packet information contained in the __sk_buff structure
+    e->packet_size = ctx->len;
+
+    // Read skb->head and skb->network_header to locate the IP header
+    // skb->mac_header points to Ethernet, network_header points past it to IP
+    unsigned char *head          = NULL;
+    __u16          net_offset    = 0;
+    __u16          transp_offset = 0;
+
+    BPF_CORE_READ_INTO(&head,          skb, head);
+    BPF_CORE_READ_INTO(&net_offset,    skb, network_header);
+    BPF_CORE_READ_INTO(&transp_offset, skb, transport_header);
+    if (!head || net_offset == 0)
+    {
+        goto discard; // can't locate headers, skip without reserving ringbuf
     }
-    
-    e->src_ip = iph_data.saddr;
-    e->dst_ip = iph_data.daddr;
-    e->protocol = iph_data.protocol;
-    
-    // Use transport_offset if available
-    if (ctx->transport_offset_valid) {
-        void *transport_header = skb_data + ctx->transport_offset;
-        
-        // Parse TCP/UDP based on protocol
-        if (e->protocol == IPPROTO_TCP) {
-            if (bpf_probe_read_kernel(&tcph_data, sizeof(tcph_data), transport_header) < 0) {
-                goto submit; // too short for tcp header
-            }
-            e->src_port = ((tcph_data.source & 0xFF) << 8) | ((tcph_data.source >> 8) & 0xFF);
-            e->dst_port = ((tcph_data.dest & 0xFF) << 8) | ((tcph_data.dest >> 8) & 0xFF);
-        } else if (e->protocol == IPPROTO_UDP) {
-            if (bpf_probe_read_kernel(&udph_data, sizeof(udph_data), transport_header) < 0) {
-                goto submit; // too short for udp header
-            }
-            e->src_port = ((udph_data.source & 0xFF) << 8) | ((udph_data.source >> 8) & 0xFF);
-            e->dst_port = ((udph_data.dest & 0xFF) << 8) | ((udph_data.dest >> 8) & 0xFF);
+
+    // Read IP header
+    if (bpf_probe_read_kernel(&ip_data, sizeof(ip_data),head + net_offset) < 0)
+    {
+        goto discard; // not IP
+    }
+    if (ip_data.version != 4) {
+        goto discard;
+    }
+    e->src_ip = ip_data.saddr;
+    e->dst_ip = ip_data.daddr;
+    e->protocol = ip_data.protocol;
+
+
+    // Read & parse protocols
+    if (ip_data.protocol == IPPROTO_TCP) {
+        //TCP handling
+        if (bpf_probe_read_kernel(&tcp_data, sizeof(tcp_data), head + net_offset + transp_offset) < 0) {
+            e->protocol = 204; // ERROR: Packet too short for TCP header
+            goto submit;
         }
+        //retrieving ports
+        e->src_port = bpf_ntohs(tcp_data.source);
+        e->dst_port = bpf_ntohs(tcp_data.dest);
+    } else if (ip_data.protocol == IPPROTO_UDP) {
+        //UDP handling
+        if (bpf_probe_read_kernel(&udp_data, sizeof(udp_data), head + net_offset + transp_offset) < 0) {
+            e->protocol = 205; // ERROR: Packet too short for UDP header
+            goto submit;
+        }
+        e->src_port = bpf_ntohs(udp_data.source);
+        e->dst_port = bpf_ntohs(udp_data.dest);
+    } else {
+        //other protocol
+        //no ports
+        e-> src_port = 0;
+        e-> dst_port = 0;
     }
-
+    
     __u64 t2 = bpf_ktime_get_ns();
     e->t_parsing = ((t2 - t1) >= 0xFFFF ? 0xFFFF : (__u16) t2-t1);
     e->t_tot = ((t2 - t0) >= 0xFFFF ? 0xFFFF : (__u16) t2-t0);
     e->t_classification = 0; //not relevant here
     e->decision = 0; //not relevant here
-
-
 submit:
     bpf_ringbuf_submit(e, 0);
+    return 0;
+discard:
+    bpf_ringbuf_discard(e, 0);
     return 0;
 }

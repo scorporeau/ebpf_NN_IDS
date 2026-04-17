@@ -50,9 +50,6 @@ int tc_trace_net_event(struct __sk_buff *skb)
     }
     __u64 t1 = bpf_ktime_get_ns();
 
-    void *data = (void *)(long)skb->data;
-    void *data_end = (void *)(long)skb->data_end;
-
     //initialize event structure with packet information contained in the __sk_buff structure
     e->packet_size = skb->len;
 
@@ -75,7 +72,6 @@ int tc_trace_net_event(struct __sk_buff *skb)
 
 
     __u32 transport_offset = sizeof(struct ethhdr) + ip_data.ihl * 4;
-
     if (ip_data.protocol == IPPROTO_TCP) {
         //TCP handling
         if (bpf_skb_load_bytes(skb, transport_offset, &tcp_data, sizeof(tcp_data)) < 0) {
