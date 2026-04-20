@@ -86,7 +86,7 @@ int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
     // Read & parse protocols
     if (ip_data.protocol == IPPROTO_TCP) {
         //TCP handling
-        if (bpf_probe_read_kernel(&tcp_data, sizeof(tcp_data), head + net_offset + transp_offset) < 0) {
+        if (bpf_probe_read_kernel(&tcp_data, sizeof(tcp_data), head + transp_offset) < 0) {
             e->protocol = 204; // ERROR: Packet too short for TCP header
             goto submit;
         }
@@ -95,7 +95,7 @@ int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
         e->dst_port = bpf_ntohs(tcp_data.dest);
     } else if (ip_data.protocol == IPPROTO_UDP) {
         //UDP handling
-        if (bpf_probe_read_kernel(&udp_data, sizeof(udp_data), head + net_offset + transp_offset) < 0) {
+        if (bpf_probe_read_kernel(&udp_data, sizeof(udp_data), head + transp_offset) < 0) {
             e->protocol = 205; // ERROR: Packet too short for UDP header
             goto submit;
         }
