@@ -12,6 +12,8 @@
 #include <time.h>
 #include <sys/resource.h>
 #include <net/if.h>
+#include <arpa/inet.h>
+
 
 #include "common.h"
 
@@ -56,10 +58,9 @@ static void print_netevent_header(bool printall)
 {
     if (printall) {
         //header printing, then let the print_netevent function do its work
-        //printf("%-4s %-15s:%-8s %-15s:%-8s %-8s %-8s|%-8s %-8s %-8s\n","n", "ipS", "portS","ipD","portD","prot","size","parsing", "class","total(ns)");
         printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n","n", "ipS", "portS","ipD","portD","protocol","size","time_parsing", "time_class","time_total");
     } else {
-        printf("%-4s\n", "N");
+        printf("%-4s %-15s:%-8s %-15s:%-8s %-8s %-8s|%-8s %-8s %-8s\n","n", "ipS", "portS","ipD","portD","prot","size","parsing", "class","total(ns)");
     }
 }
 
@@ -89,20 +90,19 @@ static int print_netevent(void *ctx, void *data, size_t data_sz)
     }
     */
 
+    //ip to string conversion
+    char src_ip[INET_ADDRSTRLEN];
+    char dst_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &e->src_ip, src_ip, sizeof(src_ip));
+    inet_ntop(AF_INET, &e->dst_ip, dst_ip, sizeof(dst_ip));
+
     if (event_ctx->print_all) {
         //print informations (the IPs with dots for readability)
-        //printf("%-4i %-3u.%-3u.%-3u.%-3u:%-8u %-3u.%-3u.%-3u.%-3u:%-8u %-8s %-8u|%-8u %-8u %-8u\n",
-        printf("%i,%u.%u.%u.%u,%u,%u.%u.%u.%u,%u,%u,%u,%u,%u,%u\n",
+        printf("%i,%s,%u,%s,%u,%u,%u,%u,%u,%u\n",
             event_ctx->n_events,
-            (e->src_ip) & 0xFF,
-            (e->src_ip >> 8) & 0xFF,
-            (e->src_ip >> 16) & 0xFF,
-            (e->src_ip >> 24) & 0xFF,
+            src_ip,
             e->src_port,
-            (e->dst_ip) & 0xFF,
-            (e->dst_ip >> 8) & 0xFF,
-            (e->dst_ip >> 16) & 0xFF,
-            (e->dst_ip >> 24) & 0xFF,
+            dst_ip,
             e->dst_port,
             e->protocol,
             e->packet_size,
@@ -110,7 +110,17 @@ static int print_netevent(void *ctx, void *data, size_t data_sz)
             e->t_classification,
             e->t_tot);
     } else {
-        printf("%-4i\n", event_ctx->n_events);
+        printf("%-4i %-15s:%-8u %-15s:%-8u %-8u %-8u|%-8u %-8u %-8u\n",
+            event_ctx->n_events,
+            src_ip,
+            e->src_port,
+            dst_ip,
+            e->dst_port,
+            e->protocol,
+            e->packet_size,
+            e->t_parsing,
+            e->t_classification,
+            e->t_tot);
     }
 
     return 0;
