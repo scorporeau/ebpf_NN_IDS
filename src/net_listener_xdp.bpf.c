@@ -140,6 +140,9 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     } else if (err == -5) {
         e->protocol = 205; // Packet too short for UDP header
         goto submit;
+    } else if (err < 0) {
+        e->protocol = 244; // Other parsing error
+        goto submit;
     }
     
 submit:

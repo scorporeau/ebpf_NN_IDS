@@ -34,49 +34,31 @@ struct {
 } events_ring SEC(".maps");
 
 
-SEC("tracepoint/net/netif_receive_skb")
-int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
-{
-    __u64 t0 = bpf_ktime_get_ns();  
-
-    struct netevent *e;
+static inline int parse_pack(struct trace_event_raw_net_dev_template *ctx, struct netevent *e) {
+    //initialize event structure with packet information contained in the __sk_buff structure
     struct iphdr ip_data = {};
     struct tcphdr tcp_data = {};
     struct udphdr udp_data = {};
-    struct sk_buff *skb = (struct sk_buff *)ctx->skbaddr; //retrieving 
+    struct sk_buff *skb = (struct sk_buff *)ctx->skbaddr; 
+    //https://docs.kernel.org/networking/skbuff.html
+    //http://oldvger.kernel.org/~davem/skb.html
+    __builtin_memset(e, 0, sizeof(*e)); //initializing netevent to zero
 
-    // Reserve space in the ring buffer
-    e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
-    if (!e) {
-        return 0;
+    if (!skb) {
+        return -1; // error, no skb
     }
-
-    __u64 t1 = bpf_ktime_get_ns(); // -------- start parsing
-
-    //initialize event structure with packet information contained in the __sk_buff structure
-    e->packet_size = ctx->len;
-
-    // Read skb->head and skb->network_header to locate the IP header
-    // skb->mac_header points to Ethernet, network_header points past it to IP
-    unsigned char *head          = NULL;
-    __u16          net_offset    = 0;
-    __u16          transp_offset = 0;
-
-    BPF_CORE_READ_INTO(&head,          skb, head);
-    BPF_CORE_READ_INTO(&net_offset,    skb, network_header);
-    BPF_CORE_READ_INTO(&transp_offset, skb, transport_header);
-    if (!head || net_offset == 0)
-    {
-        goto discard; // can't locate headers, skip without reserving ringbuf
-    }
+    __u16 network_header = BPF_CORE_READ(skb, network_header);
+    __u16 transport_header = BPF_CORE_READ(skb, transport_header);
+    char *head = BPF_CORE_READ(skb, head);
+    e->packet_size =BPF_CORE_READ(skb, data_len); //retrieve data lenght in the buffer. len = buffer length != data length
 
     // Read IP header
-    if (bpf_probe_read_kernel(&ip_data, sizeof(ip_data),head + net_offset) < 0)
+    if (bpf_probe_read_kernel(&ip_data, sizeof(ip_data), head + network_header) < 0)
     {
-        goto discard; // not IP
+        return -2; // not IP, drop
     }
     if (ip_data.version != 4) {
-        goto discard;
+        return -2; // not IPv4
     }
     e->src_ip = ip_data.saddr;
     e->dst_ip = ip_data.daddr;
@@ -86,18 +68,16 @@ int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
     // Read & parse protocols
     if (ip_data.protocol == IPPROTO_TCP) {
         //TCP handling
-        if (bpf_probe_read_kernel(&tcp_data, sizeof(tcp_data), head + transp_offset) < 0) {
-            e->protocol = 204; // ERROR: Packet too short for TCP header
-            goto submit;
+        if (bpf_probe_read_kernel(&tcp_data, sizeof(tcp_data), head + transport_header) < 0) {
+            return -4; // error, packet too short for TCP header
         }
         //retrieving ports
         e->src_port = bpf_ntohs(tcp_data.source);
         e->dst_port = bpf_ntohs(tcp_data.dest);
     } else if (ip_data.protocol == IPPROTO_UDP) {
         //UDP handling
-        if (bpf_probe_read_kernel(&udp_data, sizeof(udp_data), head + transp_offset) < 0) {
-            e->protocol = 205; // ERROR: Packet too short for UDP header
-            goto submit;
+        if (bpf_probe_read_kernel(&udp_data, sizeof(udp_data), head + transport_header) < 0) {
+            return -5; // ERROR: Packet too short for UDP header
         }
         e->src_port = bpf_ntohs(udp_data.source);
         e->dst_port = bpf_ntohs(udp_data.dest);
@@ -107,12 +87,56 @@ int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
         e-> src_port = 0;
         e-> dst_port = 0;
     }
+
+    return 0;
+}
+
+SEC("tracepoint/net/netif_receive_skb")
+int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
+{
+    __u64 t0 = bpf_ktime_get_ns();  
+
+    struct netevent *e;
+
+    // Reserve space in the ring buffer
+    e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
+    if (!e) {
+        return 0;
+    }
+
+    __u64 t1 = bpf_ktime_get_ns(); // -------- start parsing
+
+    //Parse the packet & retrieve the error
+    int err = parse_pack(ctx, e);
+    
     
     __u64 t2 = bpf_ktime_get_ns();
     e->t_parsing = ((t2 - t1) >= 0xFFFF ? 0xFFFF : (__u16) t2-t1);
     e->t_tot = ((t2 - t0) >= 0xFFFF ? 0xFFFF : (__u16) t2-t0);
     e->t_classification = 0; //not relevant here
     e->decision = 0; //not relevant here
+
+    if (err == -1) {
+        e->protocol = 201; // error reading sk buffer
+        goto submit;
+    } else if (err == -2) {
+        // e->protocol = 202; // Not an IP packet
+        // goto submit;
+        goto discard;
+    } else if (err == -3) {
+        e->protocol = 203; // Packet too short for IP header
+        goto submit;
+    } else if (err == -4) {
+        e->protocol = 204; // Packet too short for TCP header
+        goto submit;
+    } else if (err == -5) {
+        e->protocol = 205; // Packet too short for UDP header
+        goto submit;
+    } else if (err < 0) {
+        e->protocol = 244; // Other parsing error
+        goto submit;
+    }
+
 submit:
     bpf_ringbuf_submit(e, 0);
     return 0;
