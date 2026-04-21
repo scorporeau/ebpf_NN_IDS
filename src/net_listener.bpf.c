@@ -23,6 +23,7 @@
 // This MUST be present or the verifier will reject the program
 char LICENSE[] SEC("license") = "GPL";
 
+#ifndef SILENT
 // Create a ring buffer map (as in the event catcher program) to send the packet information to the user space
 struct {
     // Specify this is a ring buffer type map
@@ -32,6 +33,7 @@ struct {
     // TODO: find a real good size (512*1024 is random lol)
     __uint(max_entries, 512 * 1024);
 } events_ring SEC(".maps");
+#endif
 
 
 static inline int parse_pack(struct trace_event_raw_net_dev_template *ctx, struct netevent *e) {
@@ -98,11 +100,18 @@ int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
 
     struct netevent *e;
 
-    // Reserve space in the ring buffer
+    #ifndef SILENT
+    //reserve space in the ring buffer
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
-        return 0;
+        // ERROR: ringbuf null, pass packet
+        return TCX_PASS;
     }
+    #else
+    // if we're in silent mode, we don't care about the ring buffer, so we have to use this trick to avoid uninitialized variable
+    struct netevent e_dummy;
+    e = &e_dummy;
+    #endif
 
     __u64 t1 = bpf_ktime_get_ns(); // -------- start parsing
 
@@ -137,10 +146,19 @@ int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
         goto submit;
     }
 
+#ifdef SILENT
+submit:
+    return TCX_PASS;
+discard:
+    return TCX_PASS;
+#else
 submit:
     bpf_ringbuf_submit(e, 0);
-    return 0;
+    return TCX_PASS;
 discard:
     bpf_ringbuf_discard(e, 0);
-    return 0;
+    return TCX_PASS;
+#endif
+
+return TCX_PASS;
 }

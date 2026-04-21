@@ -44,7 +44,9 @@ int main(int argc, char **argv)
     // pointer to our eBPF skeleton structure
     struct net_listener_tc_bpf *skel = NULL;
 
+    #ifndef SILENT
     struct ring_buffer *rb = NULL;
+    #endif
 
     int err;
     
@@ -89,9 +91,9 @@ int main(int argc, char **argv)
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
+    #ifndef SILENT
     //5
     // create ring buffer to receive events from the kernel
-    
     //transmitting the context struct to print_netevent    
     rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,&he_ctx,NULL);
     if (!rb) {
@@ -99,19 +101,18 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to create ring buffer\n");
         goto cleanup;
     }
-
+    
     //6
     // print the header
-    print_netevent_header(he_ctx.print_all);
-
-
-
-
+    print_netevent_header(he_ctx.print_csv);
+    #endif
 
 
     //7
-    //infinite loop to listen to the ring buffer
+    //infinite loop
     while (!exiting) {
+        //listen to the ring buffer
+        #ifndef SILENT
         // Poll with 200ms timeout
         // Returns number of events consumed, or negative on error
         err = ring_buffer__poll(rb, TIMEOUT_RINGBUF_POLL /* timeout in ms */);
@@ -128,6 +129,7 @@ int main(int argc, char **argv)
             break;
         }
         // err > 0 means we processed that many events (handlea d by callback)
+        #endif
 
         if (benchmark_time!=0 && difftime(time(NULL), t_start) > benchmark_time) {
             printf("Benchmark time of %is reached.\n", benchmark_time);
@@ -139,8 +141,10 @@ cleanup:
     printf("\n...Cleaning up after %d seconds ...\n", (int)difftime(time(NULL), t_start));
     // Clean up resources in reverse order of creation
 
+    #ifndef SILENT
     // Free the ring buffer
     ring_buffer__free(rb);
+    #endif
 
     // Destroy the skeleton (detaches programs, closes maps)
     net_listener_tc_bpf__destroy(skel);

@@ -97,7 +97,7 @@ int main(int argc, char **argv)
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
-
+    #ifndef SILENT
     //5
     // empty the ring buffer2) & process data
     rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,&he_ctx,NULL);
@@ -108,11 +108,15 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    print_netevent_header(he_ctx.print_all);
+    //6 print header
+    print_netevent_header(he_ctx.print_csv);
+    #endif
     
 
-    //"infinite" loop to listen to the ring
+    //"infinite" loop
     while (!exiting) {
+        #ifndef SILENT
+        //listen to rungbuf
         // Poll with 200ms timeout
         // Returns number of events consumed, or negative on error
         err = ring_buffer__poll(rb, TIMEOUT_RINGBUF_POLL /* timeout in ms */);
@@ -129,6 +133,7 @@ int main(int argc, char **argv)
             break;
         }
         // err > 0 means we processed that many events (handlea d by callback)
+        #endif
 
         if (benchmark_time!=0 && difftime(time(NULL), t_start) > benchmark_time) {
             printf("Benchmark time of %is reached.\n", benchmark_time);

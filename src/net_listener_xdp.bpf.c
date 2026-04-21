@@ -23,6 +23,7 @@
 // This MUST be present or the verifier will reject the program
 char LICENSE[] SEC("license") = "GPL";
 
+#ifndef SILENT
 // Create a ring buffer map (as in the event catcher program) to send the packet information to the user space
 struct {
     // Specify this is a ring buffer type map
@@ -32,6 +33,7 @@ struct {
     // TODO: find a real good size (512*1024 is random lol)
     __uint(max_entries, 512 * 1024);
 } events_ring SEC(".maps");
+#endif
 
 
 //if doing tailing (docs.ebpf.io), we have to create a structure progs taht is storing pointers to the different ebpf programs.
@@ -106,12 +108,18 @@ int xdp_trace_net_event(struct xdp_md *ctx)
 {
     __u64 t0 = bpf_ktime_get_ns();
     struct netevent *e;
+    #ifndef SILENT
     //reserve space in the ring buffer
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
         // ERROR: ringbuf null, pass packet
         return TCX_PASS;
     }
+    #else
+    // if we're in silent mode, we don't care about the ring buffer, so we have to use this trick to avoid uninitialized variable
+    struct netevent e_dummy;
+    e = &e_dummy;
+    #endif
     __u64 t1 = bpf_ktime_get_ns();
 
 
@@ -145,14 +153,19 @@ int xdp_trace_net_event(struct xdp_md *ctx)
         goto submit;
     }
     
+#ifdef SILENT
 submit:
-    //add the code here to drop or pass de packet
-
-    //in this script, we just pass all packets and send them to the user space.
-    bpf_ringbuf_submit(e, 0);
-    return XDP_PASS;
-
+    return TCX_PASS;
 discard:
-    bpf_ringbuf_discard(e, 0); // discard event
-    return XDP_PASS; //still passing packet, as we only monitor here.
+    return TCX_PASS;
+#else
+submit:
+    bpf_ringbuf_submit(e, 0);
+    return TCX_PASS;
+discard:
+    bpf_ringbuf_discard(e, 0);
+    return TCX_PASS;
+#endif
+
+return TCX_PASS;
 }
