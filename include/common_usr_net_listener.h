@@ -25,16 +25,16 @@
 //struct for print_netevent context. Contains print all boolean and number of events processed
 struct handle_event_ctx {
     int n_events;
-    const bool print_all;
+    const bool print_csv;
 };
 
 //initializer for handle_event_ctx
 struct handle_event_ctx init_he_ctx(int argc, char **argv, int *benchmark_time) {
-    bool print_all = false;
+    bool print_csv = false;
     int n_events = 0;
     //initializing benchmark time if provided as argument
     if (argc == 2) {
-        print_all = atoi(argv[1]) != 0;
+        print_csv = atoi(argv[1]) != 0;
     }
     else if (argc == 3) {
         *benchmark_time = atoi(argv[2]);
@@ -42,14 +42,14 @@ struct handle_event_ctx init_he_ctx(int argc, char **argv, int *benchmark_time) 
             fprintf(stderr, "Invalid benchmark time: %s\n", argv[2]);
             *benchmark_time = 0;
         }
-        print_all = atoi(argv[1]) != 0;
+        print_csv = atoi(argv[1]) != 0;
     } else {
-        print_all = false;
+        print_csv = false;
         *benchmark_time = 0;
     }
     return (struct handle_event_ctx) {
         .n_events = n_events,
-        .print_all = print_all
+        .print_csv = print_csv
     };
 }
 
@@ -96,7 +96,7 @@ static int print_netevent(void *ctx, void *data, size_t data_sz)
     inet_ntop(AF_INET, &e->src_ip, src_ip, sizeof(src_ip));
     inet_ntop(AF_INET, &e->dst_ip, dst_ip, sizeof(dst_ip));
 
-    if (event_ctx->print_all) {
+    if (event_ctx->print_csv) {
         //print informations (the IPs with dots for readability)
         printf("%i,%s,%u,%s,%u,%u,%u,%u,%u,%u\n",
             event_ctx->n_events,
