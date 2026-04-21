@@ -131,9 +131,7 @@ They are virtually connected together with a theoratically 5Gbps interface, bu w
 
 \subsection{First Benchmark}
 
-First benchmark is a throughput Benchmark, analyzing max throughput archieved while running simple net\_listener scripts.
-
-In order to measure throughput, iperf3 showed to be an efficient and easy-to-use module in order to emulate max throughput \cite{bachl_flow-based_2022}. For each measurment, we ran five 30s iperf benchmarks with 10 parallel clients from the same server. The results are showed in \autoref{tab:results1}.
+First benchmark is a throughput Benchmark, analyzing max throughput archieved while running simple net\_listener scripts. In order to measure throughput, iperf3 showed to be an efficient and easy-to-use module in order to emulate max throughput \cite{bachl_flow-based_2022}. For each measurment, we ran five 30s iperf benchmarks with 10 parallel clients from the same server.
 
 \begin{table}
     \caption{Results from the first benchmark on parsing times \& maximum throughput} \label{tab:results1}
@@ -147,19 +145,17 @@ In order to measure throughput, iperf3 showed to be an efficient and easy-to-use
     \end{tabular}
 \end{table}
 
-\subsection{Second benchmark}
-
 Then, we also wanted to measure execution time of code parts. Each ebpf script used is divided in 2 parts : parsing and classification. We carefuly noted kernel timestamps obtained with the ebpf helper function bpf\_ktime\_get\_ns. Now, we wanted to analyze the parsing time for the same network packets. Since the TC and XDP scirpts were completely able to run in parallel, the results shown under for theses two scritps were done with (almost) the exact same packets. Since running \gls{xdp} natively (not offloaded, but in the NIC driver) prevents the tracepoint netif\_receive\_skb to fire (I do not really know exactly why for now), we had to re\-run the same benchmark for the net\_listener.bpf script apart from the others. This can lead to more imprecision in the interpretation of the results, but because the tracepoint approach was provided only for a comparison (since it is not able to pass or drop packets with \gls{ebpf}), this is not a concern.
 
 The packets sent during theses parsing times benchmark came from multiple sources :
 \begin{itemize}
     \item ssh connection to my personal computer in order to launch and monitor the scripts
     \item another iperf3 throughput test similar to the one in the first benchmark
-    \item tcpreplay used to replay pcaps of \cite{noauthor_cicddos2019_2019}
 \end{itemize}
 
 The results are shown in this log-histogram of parsing and total processing time per packet.
 
+IT SEEMS TO AHVE SOME ISSUES. The main issue is that the GRO is a linux feature that allows to reconstruct packets up to 65535 Bytes, but the GRO happened after the XDP hook, thus giving packets of max size 1500 to the XDP script. This issue is significantly increasing the numver of packets passed through the XDP script, thus increasing the need to go through all the parsing and classification process for a given number of transmitted Bytes. That might be the reason why we see a significant decrease of throughput for the XDP script, but a signigicant input in the execution times.
 
 
 \bibliographystyle{ieeetr}
