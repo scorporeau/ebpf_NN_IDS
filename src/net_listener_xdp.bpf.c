@@ -155,17 +155,14 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     
 #ifdef SILENT
 submit:
-    return TCX_PASS;
 discard:
-    return TCX_PASS;
+    return XDP_PASS;
 #else
 submit:
     bpf_ringbuf_submit(e, 0);
-    return TCX_PASS;
+    return XDP_PASS;
 discard:
     bpf_ringbuf_discard(e, 0);
-    return TCX_PASS;
+    return XDP_PASS; //for now, still pass the packet
 #endif
-
-return TCX_PASS;
 }

@@ -147,17 +147,14 @@ int tc_trace_net_event(struct __sk_buff *skb)
 
 #ifdef SILENT
 submit:
-    return TCX_PASS;
 discard:
-    return TCX_PASS;
+    return 0;
 #else
 submit:
     bpf_ringbuf_submit(e, 0);
-    return TCX_PASS;
+    return 0;
 discard:
     bpf_ringbuf_discard(e, 0);
-    return TCX_PASS;
+    return 0;
 #endif
-
-return TCX_PASS;
 }

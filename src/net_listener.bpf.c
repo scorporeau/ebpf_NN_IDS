@@ -51,8 +51,8 @@ static inline int parse_pack(struct trace_event_raw_net_dev_template *ctx, struc
     }
     __u16 network_header = BPF_CORE_READ(skb, network_header);
     __u16 transport_header = BPF_CORE_READ(skb, transport_header);
-    char *head = BPF_CORE_READ(skb, head);
-    e->packet_size =BPF_CORE_READ(skb, data_len); //retrieve data lenght in the buffer. len = buffer length != data length
+    char *head = BPF_CORE_READ(skb, head); //head of the skbuff structure
+    e->packet_size = BPF_CORE_READ(skb, data_len); //retrieve data lenght in the buffer. len = buffer length != data length
 
     // Read IP header
     if (bpf_probe_read_kernel(&ip_data, sizeof(ip_data), head + network_header) < 0)
@@ -148,7 +148,6 @@ int trace_netif_receive_skb(struct trace_event_raw_net_dev_template *ctx)
 
 #ifdef SILENT
 submit:
-    return TCX_PASS;
 discard:
     return TCX_PASS;
 #else
@@ -159,6 +158,4 @@ discard:
     bpf_ringbuf_discard(e, 0);
     return TCX_PASS;
 #endif
-
-return TCX_PASS;
 }
