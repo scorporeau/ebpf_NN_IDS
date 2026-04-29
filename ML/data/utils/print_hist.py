@@ -6,9 +6,9 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--input', type=str, default='../self/logs/2026-04-17/net_listener_tc.csv', help='input csv file')
-parser.add_argument('--title', type=str, default='TC', help='title of the plot')
+parser.add_argument('--title', type=str, default='TC', help='partial title of the plot')
 parser.add_argument('--limit', type=float, default=0.999, help="Percentile limit for x-axis (e.g., 0.999 for 99.9th percentile)")
-parser.add_argument('--feature', type=str, default='time_parsing', help='feature to plot')
+parser.add_argument('--feature', type=str, default='time_parsing', help='feature to plot (must exactly match column name in csv)')
 args = parser.parse_args()
 
 df = pandas.read_csv(args.input, sep=',')
@@ -27,7 +27,7 @@ else :
 
 plt.hist(
     [other, iperf],
-    bins=200,
+    bins=lim,
     range=(0, lim),
     log=True,
     color=['tab:blue', 'tab:orange'],

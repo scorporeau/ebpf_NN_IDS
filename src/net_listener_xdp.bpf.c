@@ -31,8 +31,15 @@ struct {
 
     // Size in bytes - must be power of 2 and page-aligned
     // TODO: find a real good size (512*1024 is random lol)
-    __uint(max_entries, 512 * 1024);
+    __uint(max_entries, 1024 * 1024);
 } events_ring SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 8); //1 entry for each skipped ring buf reservation possibility (ring buff full, not IP, too short for eth, too short for ip, too short for tcp/udp)
+    __type(key, __u32);
+    __type(value, __u64);
+} drop_counter SEC(".maps");
 #endif
 
 
@@ -108,12 +115,13 @@ int xdp_trace_net_event(struct xdp_md *ctx)
 {
     __u64 t0 = bpf_ktime_get_ns();
     struct netevent *e;
+    __u32 key;
     #ifndef SILENT
     //reserve space in the ring buffer
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
-        // ERROR: ringbuf null, pass packet
-        return TCX_PASS;
+        key = 0;
+        goto discard;
     }
     #else
     // if we're in silent mode, we don't care about the ring buffer, so we have to use this trick to avoid uninitialized variable
@@ -133,24 +141,24 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     e->decision = 0; //not relevant here
     
     if (err == -1) {
-        e->protocol = 201; // Packet too short
-        goto submit;
+        // Packet too short for eth header
+        key = 1;
+        goto discard;
     } else if (err == -2) {
-        // e->protocol = 202; // Not an IP packet
-        // goto submit;
+        key = 2; // Not an IP packet
         goto discard;
     } else if (err == -3) {
-        e->protocol = 203; // Packet too short for IP header
-        goto submit;
+        key = 3; // Packet too short for IP header
+        goto discard;
     } else if (err == -4) {
-        e->protocol = 204; // Packet too short for TCP header
-        goto submit;
+        key = 4; // Packet too short for TCP header
+        goto discard;
     } else if (err == -5) {
-        e->protocol = 205; // Packet too short for UDP header
-        goto submit;
+        key = 5; // Packet too short for UDP header
+        goto discard;
     } else if (err < 0) {
-        e->protocol = 244; // Other parsing error
-        goto submit;
+        key = 6; // Other parsing error
+        goto discard;
     }
     
 #ifdef SILENT
@@ -162,7 +170,15 @@ submit:
     bpf_ringbuf_submit(e, 0);
     return XDP_PASS;
 discard:
-    bpf_ringbuf_discard(e, 0);
+    if (e) {
+        bpf_ringbuf_discard(e, 0);
+    }
+    if (key) {
+        __u64 *cnt = bpf_map_lookup_elem(&drop_counter, &key);
+        if (cnt) {
+            __sync_fetch_and_add(cnt, 1);
+        }
+    }
     return XDP_PASS; //for now, still pass the packet
 #endif
 }
