@@ -44,9 +44,7 @@ int main(int argc, char **argv)
     // pointer to our eBPF skeleton structure
     struct net_listener_tc_bpf *skel = NULL;
 
-    #ifndef SILENT
     struct ring_buffer *rb = NULL;
-    #endif
 
     int err;
     
@@ -91,21 +89,30 @@ int main(int argc, char **argv)
     signal(SIGINT, sig_handler);
     signal(SIGTERM, sig_handler);
 
-    #ifndef SILENT
     //5
     // create ring buffer to receive events from the kernel
-    //transmitting the context struct to print_netevent    
+    #ifndef SILENT
     rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,&he_ctx,NULL);
     if (!rb) {
         err = -1;
         fprintf(stderr, "Failed to create ring buffer\n");
         goto cleanup;
     }
-    
+    #endif    
+
     //6
+    //create map counting dropped packets (not dropped, but not passed through the ring buffer)
+    #ifndef SILENT
+    int dc_fd = -1;
+    dc_fd = bpf_map__fd(skel->maps.drop_counter);
+    if (dc_fd < 0) {
+        fprintf(stderr, "Failed to get drop counter map fd\n");
+        goto cleanup;
+    }
+    #endif
+
     // print the header
     print_netevent_header(he_ctx.print_csv);
-    #endif
 
 
     //7
@@ -128,7 +135,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "Error polling ring buffer: %d\n", err);
             break;
         }
-        // err > 0 means we processed that many events (handlea d by callback)
+        // err > 0 means we processed that many events (handled by callback)
         #endif
 
         if (benchmark_time!=0 && difftime(time(NULL), t_start) > benchmark_time) {
@@ -143,7 +150,31 @@ cleanup:
 
     #ifndef SILENT
     // Free the ring buffer
-    ring_buffer__free(rb);
+    if (rb != NULL) {
+        ring_buffer__free(rb);
+    }
+    //output the # of packets not passed trough the ring buffer
+    if (dc_fd) {
+        // print drop counters, with descriptions:
+        __u32 keys[] = {0, 1, 2, 3, 4, 5, 6};
+        const char *descriptions[] = {
+            "Ringbuf full",
+            "Too short for eth header",
+            "Not IP",
+            "Packet too short for IP header",
+            "Packet too short for TCP header",
+            "Packet too short for UDP header",
+            "Other parsing error"
+        };
+        printf("\nDrop counters:\n");
+        for (size_t i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) {
+            __u64 cnt;
+            if (bpf_map_lookup_elem(dc_fd, &keys[i], &cnt) >= 0) {
+                printf("  %s: %llu\n", descriptions[i], cnt);
+            }
+        }
+
+    }
     #endif
 
     // Destroy the skeleton (detaches programs, closes maps)

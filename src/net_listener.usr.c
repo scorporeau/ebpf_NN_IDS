@@ -96,13 +96,21 @@ int main(int argc, char **argv)
     //5
     // empty the ring buffer2) & process data
     rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,&he_ctx,NULL);
-    
     if (!rb) {
         err = -1;
         fprintf(stderr, "Failed to create ring buffer\n");
         goto cleanup;
     }
+    
+    //print header
     print_netevent_header(he_ctx.print_csv);
+
+    //5bis : retrieve drop rb array file descriptor
+    int dc_fd = bpf_map__fd(skel->maps.drop_counter);
+    if (dc_fd < 0) {
+        fprintf(stderr, "Failed to get drop counter map fd\n");
+        goto cleanup;
+    }
     #endif
 
     err = 0;
@@ -138,9 +146,31 @@ cleanup:
     printf("\n...Cleaning up after %d seconds ...\n", (int)difftime(time(NULL), t_start));
     // Clean up resources in reverse order of creation
 
-    #ifndef SILENT
+#ifndef SILENT
     // Free the ring buffer
     ring_buffer__free(rb);
+
+    if (dc_fd) {
+        // print drop counters, with descriptions:
+        __u32 keys[] = {0, 1, 2, 3, 4, 5, 6};
+        const char *descriptions[] = {
+            "Ringbuf full",
+            "Too short for eth header",
+            "Not IP",
+            "Packet too short for IP header",
+            "Packet too short for TCP header",
+            "Packet too short for UDP header",
+            "Other parsing error"
+        };
+        printf("\nDrop counters:\n");
+        for (size_t i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) {
+            __u64 cnt;
+            if (bpf_map_lookup_elem(dc_fd, &keys[i], &cnt) >= 0) {
+                printf("  %s: %llu\n", descriptions[i], cnt);
+            }
+        }
+
+    }
     #endif
 
     // Destroy the skeleton (detaches programs, closes maps)

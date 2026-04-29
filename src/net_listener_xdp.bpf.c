@@ -115,7 +115,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
 {
     __u64 t0 = bpf_ktime_get_ns();
     struct netevent *e;
-    __u32 key;
+    __u32 key = -1;
     #ifndef SILENT
     //reserve space in the ring buffer
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
@@ -173,7 +173,7 @@ discard:
     if (e) {
         bpf_ringbuf_discard(e, 0);
     }
-    if (key) {
+    if (key >= 0) {
         __u64 *cnt = bpf_map_lookup_elem(&drop_counter, &key);
         if (cnt) {
             __sync_fetch_and_add(cnt, 1);
