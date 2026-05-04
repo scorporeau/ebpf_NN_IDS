@@ -59,53 +59,61 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
     // retrieving packet data & size
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
+    e->packet_size = data_end - data; //retrieve packet size
 
-    //registering packet size
-    e->packet_size = data_end - data;
+    struct ethhdr *eth_data;
+    struct iphdr *ip_data;
+    struct tcphdr *tcp_data;
+    struct udphdr *udp_data;
 
-    //check the eth header
-    struct ethhdr *eth = data;
-    if (eth + 1 > data_end) {
-        return -1; // error, packet too short
+    //checking eth layer
+    eth_data = data;
+    if (eth_data + 1 > data_end) {
+        return -1; // error, packet too short for eth header
     }
 
-    //check if its IP protocol
-    if (eth->h_proto != bpf_htons(ETH_P_IP)) {
+    //checking if its IP 
+    if (eth_data->h_proto != bpf_htons(ETH_P_IP)) {
         return -2; // not an IP packet
     }
 
-    //get ip header
-    struct iphdr *ip = data + sizeof(struct ethhdr);
-    if (ip + 1 > data_end) {
+    //checking IP layer
+    ip_data = data + sizeof(struct ethhdr);
+    if (ip_data + 1 > data_end) {
         return -3; // error, packet too short for IP header
     }
+    if (ip_data->version != 4) {
+        return -2; // not IPv4
+    }
+    e->src_ip = ip_data->saddr;
+    e->dst_ip = ip_data->daddr;
+    e->protocol = ip_data->protocol;
 
-    e->dst_ip = ip->daddr;
-    e->src_ip = ip->saddr;
-
-    //get protocol (TCP, UDP or something else)
-    if (ip->protocol == IPPROTO_TCP) {
-        e->protocol = 6; // TCP
-        struct tcphdr *tcp = data + sizeof(struct ethhdr) + sizeof(struct iphdr);
-        if (tcp + 1 > data_end) {
-            return -4; // error, packet too short for TCP header
+    //parsing protocols
+    if (ip_data->protocol == IPPROTO_TCP) {
+        //TCP handling
+        tcp_data = (void*)ip_data + ip_data->ihl * 4;
+        if (tcp_data + 1 > data_end) {
+            return -4; //too short for TCP
         }
-        e->src_port = bpf_ntohs(tcp->source);
-        e->dst_port = bpf_ntohs(tcp->dest);
-    } else if (ip->protocol == IPPROTO_UDP) {
-        e->protocol = 17; // UDP
-        struct udphdr *udp = data + sizeof(struct ethhdr) + sizeof(struct iphdr);
-        if (udp + 1 > data_end) {
-            return -5; // error, packet too short for UDP header
+        //retrieving ports
+        e->src_port = bpf_ntohs(tcp_data->source);
+        e->dst_port = bpf_ntohs(tcp_data->dest);
+    } else if (ip_data->protocol == IPPROTO_UDP) {
+        //UDP handling
+        udp_data = (void*)ip_data + ip_data->ihl * 4;
+        if (udp_data + 1 > data_end) {
+            return -5; //too short for UDP
         }
-        e->src_port = bpf_ntohs(udp->source);
-        e->dst_port = bpf_ntohs(udp->dest);
+        e->src_port = bpf_ntohs(udp_data->source);
+        e->dst_port = bpf_ntohs(udp_data->dest);
     } else {
-        e->protocol = ip->protocol; // other protocol
-
+        //other protocol
+        //no ports
         e-> src_port = 0;
         e-> dst_port = 0;
     }
+
     return 0;
 }
 

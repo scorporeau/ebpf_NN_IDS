@@ -20,10 +20,6 @@
 #include "common_usr_net_listener.h" //also includes common.h
 
 
-//benchmark time, in s, 0 means no end (until ctrl+c, or kill)
-static int benchmark_time = 0;
-
-
 // Global flag for graceful shutdown
 // Marked volatile because it's modified by signal handler
 static volatile sig_atomic_t exiting = 0;
@@ -50,7 +46,7 @@ int main(int argc, char **argv)
     
     time_t t_start = time(NULL);
 
-    struct handle_event_ctx he_ctx = init_he_ctx(argc, argv, &benchmark_time);
+    struct parameters params = init_params(argc, argv);
 
 
     //1
@@ -92,7 +88,7 @@ int main(int argc, char **argv)
     //5
     // create ring buffer to receive events from the kernel
     #ifndef SILENT
-    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,&he_ctx,NULL);
+    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,&params,NULL);
     if (!rb) {
         err = -1;
         fprintf(stderr, "Failed to create ring buffer\n");
@@ -112,7 +108,7 @@ int main(int argc, char **argv)
     #endif
 
     // print the header
-    print_netevent_header(he_ctx.print_csv);
+    print_netevent_header(params);
 
 
     //7
@@ -120,7 +116,6 @@ int main(int argc, char **argv)
     while (!exiting) {
         //listen to the ring buffer
         #ifndef SILENT
-        // Poll with 200ms timeout
         // Returns number of events consumed, or negative on error
         err = ring_buffer__poll(rb, TIMEOUT_RINGBUF_POLL /* timeout in ms */);
 
@@ -138,8 +133,8 @@ int main(int argc, char **argv)
         // err > 0 means we processed that many events (handled by callback)
         #endif
 
-        if (benchmark_time!=0 && difftime(time(NULL), t_start) > benchmark_time) {
-            printf("Benchmark time of %is reached.\n", benchmark_time);
+        if (params.benchmark_time!=0 && difftime(time(NULL), t_start) > params.benchmark_time) {
+            printf("Benchmark time of %is reached.\n", params.benchmark_time);
             break;
         }
     }

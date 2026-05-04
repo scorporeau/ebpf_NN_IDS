@@ -58,6 +58,8 @@ static inline int parse_pack(struct __sk_buff *skb, struct netevent *e) {
     if (eth_data + 1 > data_end) {
         return -1; // error, packet too short for eth header
     }
+
+    //checking if its IP 
     if (eth_data->h_proto != bpf_htons(ETH_P_IP)) {
         return -2; // not an IP packet
     }
@@ -79,7 +81,7 @@ static inline int parse_pack(struct __sk_buff *skb, struct netevent *e) {
         //TCP handling
         tcp_data = (void*)ip_data + ip_data->ihl * 4;
         if (tcp_data + 1 > data_end) {
-            return -4;
+            return -4; //too short for TCP
         }
         //retrieving ports
         e->src_port = bpf_ntohs(tcp_data->source);
@@ -88,7 +90,7 @@ static inline int parse_pack(struct __sk_buff *skb, struct netevent *e) {
         //UDP handling
         udp_data = (void*)ip_data + ip_data->ihl * 4;
         if (udp_data + 1 > data_end) {
-            return -5;
+            return -5; //too short for UDP
         }
         e->src_port = bpf_ntohs(udp_data->source);
         e->dst_port = bpf_ntohs(udp_data->dest);

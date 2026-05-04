@@ -19,13 +19,6 @@
 #include "common_usr_net_listener.h"
 
 
-//benchmark time, in s, 0 means no end (until ctrl+c, or kill)
-static int benchmark_time = 0;
-
-int n_events = 0;
-
-
-
 // Global flag for graceful shutdown
 // Marked volatile because it's modified by signal handler
 static volatile sig_atomic_t exiting = 0;
@@ -47,15 +40,10 @@ int main(int argc, char **argv)
 {
     // pointer to our eBPF skeleton structure
     struct net_listener_xdp_bpf *skel = NULL;
-
     struct ring_buffer *rb = NULL;
-
     int err;
-    
     time_t t_start = time(NULL);
-    
-
-    struct handle_event_ctx he_ctx = init_he_ctx(argc, argv, &benchmark_time);
+    struct parameters params = init_params(argc, argv);
 
 
 
@@ -100,7 +88,7 @@ int main(int argc, char **argv)
     #ifndef SILENT
     //5
     // empty the ring buffer2) & process data
-    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,&he_ctx,NULL);
+    rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_netevent,&params,NULL);
     
     if (!rb) {
         err = -1;
@@ -116,7 +104,7 @@ int main(int argc, char **argv)
     }
 
     //6 print header
-    print_netevent_header(he_ctx.print_csv);
+    print_netevent_header(params);
     #endif
     
 
@@ -142,8 +130,8 @@ int main(int argc, char **argv)
         // err > 0 means we processed that many events (handlea d by callback)
         #endif
 
-        if (benchmark_time!=0 && difftime(time(NULL), t_start) > benchmark_time) {
-            printf("Benchmark time of %is reached.\n", benchmark_time);
+        if (params.benchmark_time!=0 && difftime(time(NULL), t_start) > params.benchmark_time) {
+            printf("Benchmark time of %is reached.\n", params.benchmark_time);
             break;
         }
     }
