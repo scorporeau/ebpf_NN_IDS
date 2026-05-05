@@ -35,7 +35,7 @@ struct parameters {
 //initializer for parameters
 struct parameters init_params(int argc, char **argv) {
     //if help
-    if (strcmp(argv[1], "--help") == 0) {
+    if (argc > 1 && strcmp(argv[1], "--help") == 0) {
         printf("Usage: %s [print_csv] [benchmark_time] [print_times]\n", argv[0]);
         printf("  print_csv: 0 (default) for human-readable output, 1 for CSV format\n");
         printf("  benchmark_time: duration in seconds to run the program (default: 0 for infinite)\n");
@@ -49,13 +49,13 @@ struct parameters init_params(int argc, char **argv) {
     int benchmark_time = 0;
 
     //initializing benchmark time if provided as argument
-    if (argc > 0) {
+    if (argc > 1) {
         print_csv = atoi(argv[1]) != 0;
     }
-    if (argc > 1) {
+    if (argc > 2) {
         benchmark_time = atoi(argv[2]);
     }
-    if (argc > 2) {
+    if (argc > 3) {
         print_times = atoi(argv[3]) != 0;
     }
     return (struct parameters) {
