@@ -1,0 +1,70 @@
+#!/bin/bash
+
+
+#This script aims to run on the server-side.
+#The goal is to consecutively run iperf3 benchmarks with net_listener, net_listener_tc and net_listener_xdp scripts attached the the same interface.
+
+#retrieve net interface name from 1st arg
+if [ -z "$1" ]; then
+    echo "Please provide the network interface name as the first argument."
+    exit 1
+else
+    IFACE=$1
+fi
+
+#retrieve IP address from 2nd arg (need to be bounded to the interface already provided)
+if [ -z "$2" ]; then
+    echo "Please provide the IP address binded to the interface $IFACE."
+    exit 1
+else
+    IP_ADDR=$2
+fi
+
+#deleting old output files
+echo "Sorry, deleting old outputs if they exist..."
+rm -rf output
+
+#creating folders & file
+mkdir output
+mkdir output/iperf
+mkdir output/ebpf
+cd output
+touch config.txt
+
+
+#output network configuration in config.txt file for test reliability
+ip a >> config.txt
+ethtool -k $IFACE >> config.txt
+lshw -c network >> config.txt
+
+
+
+#loop for each ebpf script + no_ebpf (which is not a script, just nothing attached)
+for BPF_SCRIPT in "net_listener" "net_listener_tc" "net_listener_xdp" "no_ebpf"; do
+    echo "Running iperf3 with $BPF_SCRIPT attached..."
+
+    #attach & run ebpf script (if != no_ebpf)
+    if [ "$BPF_SCRIPT" != "no_ebpf" ]; then
+        touch "./ebpf/$BPF_SCRIPT.csv"
+        ../../build/$BPF_SCRIPT 1 0 1 | ts >> "./ebpf/$BPF_SCRIPT.csv" &
+        PID_BPF=$!
+    fi
+
+    #run the server for only one connection (since each one will be outputted to a different file)
+    touch "./iperf/$BPF_SCRIPT.txt"
+    iperf3 -s -V --one-off --bind $IP_ADDR | ts >> "./iperf/$BPF_SCRIPT.txt" &
+    PID_IPERF=$!
+
+    #wait for iperf3 to finish
+    echo "Waiting for iperf3 (listening on $IP_ADDR) to finish..."
+    wait $PID_IPERF
+
+    #kill ebpf script if it was launched
+    if [ "$BPF_SCRIPT" != "no_ebpf" ]; then
+        kill $PID_BPF
+        wait $PID_BPF
+    fi
+done
+
+
+exit 0
