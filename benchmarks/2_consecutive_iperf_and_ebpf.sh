@@ -32,7 +32,7 @@ if [ -z "$4" ]; then
     SCRIPTS=("no_ebpf")
 else
     shift 3
-    SCRIPTS=("$@", "no_ebpf")
+    SCRIPTS=("$@" "no_ebpf")
 fi
 
 #deleting old output files
@@ -43,14 +43,13 @@ rm -r output
 mkdir output
 mkdir output/iperf
 mkdir output/ebpf
-cd output
-touch config.txt
+touch output/config.txt
 
 
 #output network configuration in config.txt file for test reliability
-ip a >> config.txt
-ethtool -k $IFACE >> config.txt
-lshw -c network >> config.txt
+ip a >> output/config.txt
+ethtool -k $IFACE >> output/config.txt
+lshw -c network >> output/config.txt
 
 
 
@@ -60,19 +59,20 @@ for BPF_SCRIPT in "${SCRIPTS[@]}"; do
 
     #attach & run ebpf script (if != no_ebpf)
     if [ "$BPF_SCRIPT" != "no_ebpf" ]; then
-        touch "./ebpf/$BPF_SCRIPT$SUFFIX_NAME.csv"
-        ../../build/$BPF_SCRIPT 1 0 1 | ts >> "./ebpf/$BPF_SCRIPT$SUFFIX_NAME.csv" &
+        touch "./output/ebpf/$BPF_SCRIPT$SUFFIX_NAME.csv"
+        ../build/$BPF_SCRIPT 1 0 1 | ts >> "./output/ebpf/$BPF_SCRIPT$SUFFIX_NAME.csv" &
         PID_BPF=$!
     fi
 
     #run the server for only one connection (since each one will be outputted to a different file)
-    touch "./iperf/$BPF_SCRIPT$SUFFIX_NAME.txt"
-    iperf3 -s -V --one-off --bind $IP_ADDR | ts >> "./iperf/$BPF_SCRIPT$SUFFIX_NAME.txt" &
-    PID_IPERF=$!
+    touch "./output/iperf/$BPF_SCRIPT$SUFFIX_NAME.txt"
+    iperf3 -s -V --one-off --bind $IP_ADDR | ts >> "./output/iperf/$BPF_SCRIPT$SUFFIX_NAME.txt" #&
+    #PID_IPERF=$!
 
     #wait for iperf3 to finish
-    echo "... Waiting for iperf3 (listening on $IP_ADDR) to finish..."
-    wait $PID_IPERF
+    #echo "... Waiting for iperf3 (listening on $IP_ADDR) to finish..."
+    #wait $PID_IPERF
+    echo "iperf3 finished for $BPF_SCRIPT."
 
     #kill ebpf script if it was launched
     if [ "$BPF_SCRIPT" != "no_ebpf" ]; then
