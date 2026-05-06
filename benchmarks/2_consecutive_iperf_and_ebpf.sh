@@ -76,6 +76,7 @@ for BPF_SCRIPT in "${SCRIPTS[@]}"; do
 
     #kill ebpf script if it was launched
     if [ "$BPF_SCRIPT" != "no_ebpf" ]; then
+        echo "Killing $BPF_SCRIPT with pid $PID_BPF..."
         kill $PID_BPF
         wait $PID_BPF
     fi
