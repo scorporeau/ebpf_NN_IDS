@@ -20,9 +20,24 @@ else
     IP_ADDR=$2
 fi
 
+#retrieving suffix_name for output files (no_gro for example)
+if [ -z "$3" ]; then
+    SUFFIX_NAME=""
+else
+    SUFFIX_NAME="_$3"
+fi
+
+#retrieving ebpf script names from 3rd+ args
+if [ -z "$4" ]; then
+    SCRIPTS=("no_ebpf")
+else
+    shift 3
+    SCRIPTS=("$@", "no_ebpf")
+fi
+
 #deleting old output files
 echo "Sorry, deleting old outputs if they exist..."
-rm -rf output
+rm -r output
 
 #creating folders & file
 mkdir output
@@ -39,24 +54,24 @@ lshw -c network >> config.txt
 
 
 
-#loop for each ebpf script + no_ebpf (which is not a script, just nothing attached)
-for BPF_SCRIPT in "net_listener" "net_listener_tc" "net_listener_xdp" "no_ebpf"; do
+#loop for each ebpf script provided + no_ebpf (which is not a script, just nothing attached)
+for BPF_SCRIPT in "${SCRIPTS[@]}"; do
     echo "Running iperf3 with $BPF_SCRIPT attached..."
 
     #attach & run ebpf script (if != no_ebpf)
     if [ "$BPF_SCRIPT" != "no_ebpf" ]; then
-        touch "./ebpf/$BPF_SCRIPT.csv"
-        ../../build/$BPF_SCRIPT 1 0 1 | ts >> "./ebpf/$BPF_SCRIPT.csv" &
+        touch "./ebpf/$BPF_SCRIPT$SUFFIX_NAME.csv"
+        ../../build/$BPF_SCRIPT 1 0 1 | ts >> "./ebpf/$BPF_SCRIPT$SUFFIX_NAME.csv" &
         PID_BPF=$!
     fi
 
     #run the server for only one connection (since each one will be outputted to a different file)
-    touch "./iperf/$BPF_SCRIPT.txt"
-    iperf3 -s -V --one-off --bind $IP_ADDR | ts >> "./iperf/$BPF_SCRIPT.txt" &
+    touch "./iperf/$BPF_SCRIPT$SUFFIX_NAME.txt"
+    iperf3 -s -V --one-off --bind $IP_ADDR | ts >> "./iperf/$BPF_SCRIPT$SUFFIX_NAME.txt" &
     PID_IPERF=$!
 
     #wait for iperf3 to finish
-    echo "Waiting for iperf3 (listening on $IP_ADDR) to finish..."
+    echo "... Waiting for iperf3 (listening on $IP_ADDR) to finish..."
     wait $PID_IPERF
 
     #kill ebpf script if it was launched
