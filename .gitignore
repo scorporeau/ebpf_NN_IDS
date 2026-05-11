@@ -3,6 +3,8 @@
 /include/vmlinux.h
 /ML/data/*
 !/ML/data/utils
+!/ML/data/self
+/ML/data/self/*
 !/ML/data/self/zip
 .vscode/
 
