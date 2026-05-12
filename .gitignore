@@ -5,22 +5,10 @@
 !/ML/data/utils
 !/ML/data/self
 /ML/data/self/*
-!/ML/data/self/zip
+#!/ML/data/self/zip
 .vscode/
 
-# LaTeX build files & templates
-*.template.tex
-*.template.pdf
-*.template.bib
-
-*.log
-*.aux
-*.out
-*.synctex.gz
-*.fdb_latexmk
-*.fls
-*.glsdefs
-*.bbl
-*.blg
-*.pdf
-*.aux
+/tex/*
+!/tex/graphics
+!/tex/paper.tex
+!/tex/eBPF_on_smartNIC.bib
