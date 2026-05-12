@@ -45,22 +45,22 @@ lshw -c network >> output/config.txt
 
 
 echo "Attaching tc and xdp scripts to $IFACE..."
-../build/net_listener_tc 1 0 1 | ts >> "./output/ebpf/net_listener_tc$SUFFIX_NAME.csv" &
+../build/net_listener_tc 1 0 1 >> "./output/ebpf/net_listener_tc$SUFFIX_NAME.csv" & #not using ts as before since the PID obtained is the one from ts and not net_listener script.
 PID_TC=$!
-../build/net_listener_xdp 1 0 1 | ts >> "./output/ebpf/net_listener_xdp$SUFFIX_NAME.csv" &
+../build/net_listener_xdp 1 0 1 >> "./output/ebpf/net_listener_xdp$SUFFIX_NAME.csv" &
 PID_XDP=$!
 
 echo "Running iperf3, waiting for clien to connect..."
-
 touch "./output/iperf/iperf$SUFFIX_NAME.txt"
-iperf3 -s -V --one-off --bind $IP_ADDR | ts >> "./output/iperf/iperf$SUFFIX_NAME.txt"
+iperf3 -s -V --one-off --bind $IP_ADDR >> "./output/iperf/iperf$SUFFIX_NAME.txt"
 
-echo "Client finished, killing processes"
+echo "output of diff command for output files"
+diff "./output/ebpf/net_listener_tc$SUFFIX_NAME.csv" "./output/ebpf/net_listener_xdp$SUFFIX_NAME.csv"
 
+echo "Client finished, killing processes $PID_TC and $PID_XDP..."
 kill $PID_TC
-wait $PID_TC
 kill $PID_XDP
+wait $PID_TC
 wait $PID_XDP
-
 
 exit 0

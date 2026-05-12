@@ -21,7 +21,9 @@ p1, p10, median, p90, p99 = feature.quantile(0.01), feature.quantile(0.10), feat
 
 if args.limit < 1:
     lim = int(feature.quantile(args.limit))
-else :
+elif args.limit == 1:
+    lim = int(feature.max())
+else:
     lim = int(args.limit)
 
 
@@ -52,6 +54,12 @@ percentiles = {
     '90%': p90,
     '99%': p99,
 }
+
+#print percentiles to std
+print(f"Percentiles for {args.feature} in {args.title}:")
+for label, value in percentiles.items():
+    print(f"{label}: {value:.2f}")
+
 for label, x in percentiles.items():
     plt.axvline(x, color='black', linestyle='--', linewidth=1)
     plt.text(x, ymax * 0.75, label, rotation=90, va='top', ha='right', fontsize=8, color='black')

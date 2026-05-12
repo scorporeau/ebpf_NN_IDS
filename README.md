@@ -11,7 +11,7 @@ The motivation comes from the statement of Bachl et al., 2022 [2] that an ML bas
 
 First, you have to install the required dependencies (might depends of your OS, I used ubuntu 22.04)
 
-`apt install libbpf-dev make gcc`
+`apt install libbpf-dev make gcc clang`
 
 Then, you have to generate the vmlinux.h file that contains all information about your kernel.
 `bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h`
