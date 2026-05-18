@@ -43,7 +43,7 @@ struct netevent {
     __u16 dst_port;     // Destination port
     __u8 protocol;      // IPPROTO_TCP (6), IPPROTO_UDP (17)
     __u32 packet_size;  // bytes
-    //times, note that max_int in __u16 is 65 53S ns = 65 ms. Might not be enough, we'll see.
+    //times, note that max_int in __u16 is 65 535 ns = 65 ms. Might not be enough, we'll see.
     __u16 t_parsing;    // time (in ns) the program took to parse the packet
     __u16 t_classification; // time (in ns) the program took to classify the packet
     __u16 t_tot;        // total time (in ns) the ebpf program held the packet
