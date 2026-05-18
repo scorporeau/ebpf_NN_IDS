@@ -46,7 +46,7 @@
 
 \usepackage[nomain, toc, acronym]{glossaries}
 \glsdisablehyper
-
+\graphicspath{{graphics/}}
 
 \begin{document}
 
@@ -77,6 +77,8 @@
 
 \begin{abstract}
     Throughout the last 10 years, we have seen many papers exploring \gls{ebpf} in order to implement various things. One of the studied fields is \gls{ids} which uses \gls{ebpf}'s \gls{xdp} in order to implement packet filtration inside the linux kernel. In parallel, the growing use of \gls{snic} with \gls{xdp} offloading allows to run bigger \gls{ebpf} scripts without impacting the host machine's CPU. In this paper, we purpose different implementations for many \gls{ml} techniques applied to \gls{ids} with \gls{xdp} scripts. We analyzed all kind of performances for each \gls{ml} technique that we choose to implement with different \gls{ebpf} techniques : \gls{xdp} (both generic and driver) and \gls{tc}. The goal is to proove that the efficient way is to use \gls{xdp} at the driver level and even offload it to \gls{snic}.
+    %new things written, IDK where to put them so here Now
+    
 
 \end{abstract}
 
@@ -175,6 +177,40 @@ We looked into the results of both iperf3 and \gls{ebpf} net\_listener logs of o
         \bottomrule
     \end{tabular}
 \end{table}
+
+%The 4-histograms dissapeared ??? re-writing it ...
+%TODO maybe replace with a box histogram showing all time_total in one graphics
+\begin{figure*}[t]
+    \caption{Comparison of the time passed in eBPF script per packet} \label{fig:results1}
+    \centering
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \def\svgwidth{\linewidth}
+        \input{graphics/net_listener_tc_gro_off_time_total.pdf_tex}
+        \caption{TC, gro off}
+    \end{minipage}
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \def\svgwidth{\linewidth}
+        \input{graphics/net_listener_tc_gro_on_time_total.pdf_tex}
+        \caption{TC, gro on}
+    \end{minipage}
+    \vspace{0.5em}
+    
+        \begin{minipage}{0.48\linewidth}
+        \centering
+        \def\svgwidth{\linewidth}
+        \input{graphics/net_listener_xdp_gro_off_time_total.pdf_tex}
+        \caption{XDP, gro off}
+    \end{minipage}
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \def\svgwidth{\linewidth}
+        \input{graphics/net_listener_xdp_gro_on_time_total.pdf_tex}
+        \caption{XDP, gro on}
+    \end{minipage}
+\end{figure*}
+
 
 All results of this benchmark are resumed in \autoref{tab:results1} and full histograms . %TODO add the histograms of the first benchmark here.
 
