@@ -40,7 +40,7 @@ plt.hist(
 
 plt.xlabel(args.feature)
 plt.ylabel('# of packets (log scale)')
-plt.title('Histogram of ' + args.feature + ' for ' + args.title)
+plt.title('Histogram of ' + args.feature + ' for ' + args.title + 'tot packets :' + str(len(feature)))
 plt.legend()
 plt.xlim(0, lim)
 plt.xticks(range(0, int(lim)+1, lim // 20), fontsize=6, rotation=45)

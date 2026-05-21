@@ -8,7 +8,8 @@ import pandas as pd
 parser = argparse.ArgumentParser()
 parser.add_argument('--inputs', nargs='+', type=str, default=['../self/logs/2026-04-17/net_listener_tc.csv'], help='one or more input CSV files with the same columns')
 parser.add_argument('--feature', type=str, default='time_parsing', help='feature to plot (must exactly match column name in CSV)')
-parser.add_argument('--labels', type=bool, default=True, help='enable title, axis labels, tick labels, and legend')
+parser.add_argument('--labels', action='store_true', default=False, help='enable title, axis labels, tick labels, and legend')
+parser.add_argument('--log', action='store_true', default=False, help='enable log scale for the boxplot')
 args = parser.parse_args()
 
 
@@ -40,12 +41,13 @@ box = plt.boxplot(
 plt.grid(axis='y', alpha=0.3, linestyle='--', linewidth=0.7)
 
 # Set y-axis to logarithmic scale
-plt.yscale('log')
+if args.log :
+    plt.yscale('log')
 
 #labels
 if args.labels:
     unit = ''
-    if 'time' in args.feature.lower():
+    if 'time' in args.feature.lower(): # not perfect neither universal.
         unit = ' (ns)'
     plt.title(f'Boxplot comparison of {args.feature}{unit}', fontsize=14, fontweight='bold')
     plt.xlabel('Dataset', fontsize=12)
@@ -59,14 +61,13 @@ if args.labels:
         min_val = series.quantile(0.1)
         max_val = series.quantile(0.99)
         
-        # Position text annotations slightly offset from box position (i+1)
+        # Position text annotations slightly offset from box position
         x_pos = i + 1.25
-        y_offset = max_val * 0.02
         
         # Draw small horizontal lines and text for key values
         plt.text(x_pos - 0.1, min_val, f'1%: {min_val:.0f}', fontsize=6, va='center')
         plt.text(x_pos, q1, f'25%: {q1:.0f}', fontsize=6, va='center')
-        plt.text(x_pos, median, f'M: {median:.0f}', fontsize=6, va='center', fontweight='bold', color='red')
+        plt.text(x_pos+ 0.1, median, f'M: {median:.0f}', fontsize=6, va='center', fontweight='bold', color='red')
         plt.text(x_pos, q3, f'75%: {q3:.0f}', fontsize=6, va='center')
         plt.text(x_pos - 0.1 , max_val, f'99%: {max_val:.0f}', fontsize=6, va='center')
 
