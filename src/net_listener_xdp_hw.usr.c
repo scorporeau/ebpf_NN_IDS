@@ -42,10 +42,12 @@ int main(int argc, char **argv)
     struct net_listener_xdp_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
     int err;
+    /* Track interface and attach state so we can detach on cleanup */
+    int ifindex = 0;
+    int attached = 0;
+    unsigned int xdp_flags = 0;
     time_t t_start = time(NULL);
     struct parameters params = init_params(argc, argv);
-
-
 
 
     //1
@@ -67,18 +69,26 @@ int main(int argc, char **argv)
 
     //3
     //attach BPF XDP to the right net interface
-    int ifindex = if_nametoindex(NET_INTERFACE);
+    ifindex = if_nametoindex(NET_INTERFACE);
     if (!ifindex) {
         fprintf(stderr, "Failed to find network interface name: %s\n", NET_INTERFACE);
         goto cleanup;
     }
 
-    skel->links.xdp_trace_net_event = bpf_program__attach_xdp(skel->progs.xdp_trace_net_event, ifindex);
-    if (!skel->links.xdp_trace_net_event) {
-        fprintf(stderr, "Failed to attach XDP to network interface\n");
+    // Attach XDP Hardware mode
+    xdp_flags = (1U << 3);//XDP_FLAGS_HW_MODE
+
+    /* Use bpf_program__fd + bpf_set_link_xdp_fd to attach with flags so the
+     * chosen attach mode is respected. Store attached state to detach later.
+     */
+    int prog_fd = bpf_program__fd(skel->progs.xdp_trace_net_event);
+    if (prog_fd < 0) {
+        fprintf(stderr, "Failed to get BPF program fd\n");
         goto cleanup;
     }
 
+    //attach XDP program to the interface & with right flags (driver, skb, offload)
+    err = bpf_xdp_attach(ifindex, prog_fd, xdp_flags, NULL);
 
     //4
     //signal handlers for graceful shutdown !!!
