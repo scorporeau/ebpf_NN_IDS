@@ -177,7 +177,8 @@ cleanup:
     }
     #endif
     // Destroy the skeleton (detaches programs, closes maps)
-    net_listener_xdp_bpf__destroy(skel);
+    bpf_xdp_detach(ifindex, 0, NULL);
+    // net_listener_xdp_bpf__destroy(skel);
 
     return err < 0 ? 1 : 0;
 
