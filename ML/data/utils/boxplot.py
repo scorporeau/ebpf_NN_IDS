@@ -58,7 +58,7 @@ if args.labels:
         q1 = series.quantile(0.25)
         median = series.quantile(0.5)
         q3 = series.quantile(0.75)
-        min_val = series.quantile(0.1)
+        min_val = series.quantile(0.01)
         max_val = series.quantile(0.99)
         
         # Position text annotations slightly offset from box position
@@ -66,9 +66,9 @@ if args.labels:
         
         # Draw small horizontal lines and text for key values
         plt.text(x_pos - 0.1, min_val, f'1%: {min_val:.0f}', fontsize=6, va='center')
-        plt.text(x_pos, q1, f'25%: {q1:.0f}', fontsize=6, va='center')
-        plt.text(x_pos+ 0.1, median, f'M: {median:.0f}', fontsize=6, va='center', fontweight='bold', color='red')
-        plt.text(x_pos, q3, f'75%: {q3:.0f}', fontsize=6, va='center')
+        # plt.text(x_pos, q1, f'25%: {q1:.0f}', fontsize=6, va='center')
+        plt.text(x_pos+ 0, median, f'M: {median:.0f}', fontsize=6, va='center', fontweight='bold', color='red')
+        # plt.text(x_pos, q3, f'75%: {q3:.0f}', fontsize=6, va='center')
         plt.text(x_pos - 0.1 , max_val, f'99%: {max_val:.0f}', fontsize=6, va='center')
 
 plt.tight_layout()
