@@ -44,6 +44,10 @@ SKELETONS := $(patsubst $(SRC_DIR)/%.bpf.c,$(BUILD_DIR)/%.skel.h,$(BPF_SOURCES))
 USER_SOURCES := $(wildcard $(SRC_DIR)/*.usr.c)
 USER_BINS := $(patsubst $(SRC_DIR)/%.usr.c,$(BUILD_DIR)/%,$(USER_SOURCES))
 
+# Keep generated .o and .skel.h files after a build.
+# GNU make would otherwise treat them as intermediate and delete them.
+.SECONDARY: $(BPF_OBJECTS) $(SKELETONS)
+
 # Default target: build everything
 .PHONY: all
 all: $(USER_BINS)
