@@ -86,7 +86,8 @@ int main(int argc, char const *argv[])
         // Wait for signal
         pause();
     }
-
+    
+cleanup:
     // Destroy the skeleton (detaches programs, closes maps)
     bpf_xdp_detach(ifindex, xdp_flags, NULL);
     dummy_xdp_bpf__destroy(skel);
