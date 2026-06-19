@@ -10,6 +10,7 @@
 
 // libbpf library header for core BPF functionality
 #include <bpf/libbpf.h>
+#include <bpf/bpf.h>
 
 // Include our generated skeleton header (generated automatically with Makefile)
 // The skeleton provides type-safe access to maps, programs, and links
@@ -38,15 +39,15 @@ static void sig_handler(int sig)
 
 int main(int argc, char **argv)
 {
+    time_t t_start = time(NULL);
     // pointer to our eBPF skeleton structure
     struct net_listener_xdp_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
     int err;
     /* Track interface and attach state so we can detach on cleanup */
     int ifindex = 0;
-    int attached = 0;
-    unsigned int xdp_flags = 0;
-    time_t t_start = time(NULL);
+    __u32 xdp_flags = (1U << 3);//XDP_FLAGS_HW_MODE
+
     struct parameters params = init_params(argc, argv);
 
 
@@ -75,9 +76,8 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    // Attach XDP Hardware mode
-    xdp_flags = (1U << 3);//XDP_FLAGS_HW_MODE
 
+    //get program file descriptor
     /* Use bpf_program__fd + bpf_set_link_xdp_fd to attach with flags so the
      * chosen attach mode is respected. Store attached state to detach later.
      */
@@ -86,9 +86,28 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to get BPF program fd\n");
         goto cleanup;
     }
+    //WIP TODO:FIX ATTACH ISSUE
 
+    /*
+    //---------------------------USING BPF LINKS (libbpf low level API)
+    struct bpf_prog_load_attr prog_load_attr = {
+		.prog_type = BPF_PROG_TYPE_XDP,
+		.file = "xdpdump_kern.o",
+	};
+
+    link_fd = bpf_link_create(prog_fd, ifindex, BPF_XDP, &opts);
+    if (!link_fd) {
+        fprintf(stderr, "Failed to create bpf link\n");
+        goto cleanup;
+    }
+    */
+
+    //---------------------------USING LIBBPF bpf_xdp_attach
     //attach XDP program to the interface & with right flags (driver, skb, offload)
     err = bpf_xdp_attach(ifindex, prog_fd, xdp_flags, NULL);
+    if (!err) {
+        fprintf(stderr, "Error while attaching XDP file in hardware offload mode\n");
+    }
 
     //4
     //signal handlers for graceful shutdown !!!
@@ -177,8 +196,9 @@ cleanup:
     }
     #endif
     // Destroy the skeleton (detaches programs, closes maps)
-    bpf_xdp_detach(ifindex, 0, NULL);
-    // net_listener_xdp_bpf__destroy(skel);
+    //bpf_xdp_detach(ifindex, 0, NULL);
+    //bpf_link_detach(link_fd);
+    net_listener_xdp_bpf__destroy(skel);
 
     return err < 0 ? 1 : 0;
 

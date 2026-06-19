@@ -38,15 +38,14 @@ static void sig_handler(int sig)
 
 int main(int argc, char **argv)
 {
+    time_t t_start = time(NULL);
     // pointer to our eBPF skeleton structure
     struct net_listener_xdp_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
     int err;
     /* Track interface and attach state so we can detach on cleanup */
     int ifindex = 0;
-    int attached = 0;
-    unsigned int xdp_flags = 0;
-    time_t t_start = time(NULL);
+    unsigned int xdp_flags = (1U << 1);//XDP_FLAGS_SKB_MODE
     struct parameters params = init_params(argc, argv);
 
 
@@ -74,10 +73,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to find network interface name: %s\n", NET_INTERFACE);
         goto cleanup;
     }
-
-    // Attach XDP SKB mode
-    xdp_flags = (1U << 1);//XDP_FLAGS_SKB_MODE
-
 
     /* Use bpf_program__fd + bpf_set_link_xdp_fd to attach with flags so the
      * chosen attach mode is respected. Store attached state to detach later.
@@ -178,8 +173,8 @@ cleanup:
     }
     #endif
     // Destroy the skeleton (detaches programs, closes maps)
-    bpf_xdp_detach(ifindex, 0, NULL);
-    // net_listener_xdp_bpf__destroy(skel);
+    bpf_xdp_detach(ifindex, xdp_flags, NULL);
+    net_listener_xdp_bpf__destroy(skel);
 
     return err < 0 ? 1 : 0;
 
