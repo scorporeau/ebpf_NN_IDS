@@ -14,7 +14,7 @@
 // Include our generated skeleton header (generated automatically with Makefile)
 // The skeleton provides type-safe access to maps, programs, and links
 #include "dummy_xdp.skel.h"
-
+#include "common.h"
 
 
 // Global flag for graceful shutdown
