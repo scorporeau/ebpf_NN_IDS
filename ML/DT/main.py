@@ -26,20 +26,20 @@ PATHES = ["/home/sacha/Desktop/ebpf_progs/ML/data/self/curr.csv",
           "/home/sacha/Desktop/ebpf_progs/ML/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_UDP.csv",
           "/home/sacha/Desktop/ebpf_progs/ML/data/CICDDoS2019/CSV-01-12/01-12/DrDoS_MSSQL.csv"] #easier to store pathes directly in this script, since we will modify the features according to each CSV source.
 #For estimating features, MUST HAVE _mean and _std, OPTIONAL _skew, _max and _min.
-FEATURE_COLS = [["src_port", "dst_port", "protocol" ,"fwd_segment_size_mean","fwd_segment_size_std"],
-                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"],
-                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std"]] #features columns in the CSV
+FEATURE_COLS = [["src_port", "dst_port", "protocol" ,"fwd_packets_IAT_mean","fwd_packets_IAT_std","fwd_packets_IAT_skew","fwd_bytes_mean","fwd_bytes_std","fwd_bytes_skew"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std", "Flow IAT_mean", "Flow IAT_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std", "Flow IAT_mean", "Flow IAT_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std", "Flow IAT_mean", "Flow IAT_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std", "Flow IAT_mean", "Flow IAT_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std", "Flow IAT_mean", "Flow IAT_std"],
+                ["Source Port", "Destination Port", "Protocol","Fwd Packet Length_mean", "Fwd Packet Length_std", "Flow IAT_mean", "Flow IAT_std"]] #features columns in the CSV. Remember that it uses f_mean and f_std to randomly reconstruct the OG feature value.
 
 #Now, features informations to transmit to the bpf program
-FEATURE_IDX  = {"src_port":0, "dst_port":1, "protocol":2,"fwd_segment_size":3,
-                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3} #Theses number SHALL BE in the range 0->(FEATURES_NB-1). Every index should also be in the croissant order, according to features int definitions in /include/project_features.h (such as they can be reconstructed by fvifupdate in dt_xdp.bpf.c)
-FEATURE_NAMES = ["F_S_PORT","F_D_PORT","F_PROTOCOL","F_PKT_SIZE"] #Feature names, in the same order as above. Strings should correspond exactly to project_features.h definitions
-LABEL_COL    = "Label" #label col has to be the same in each csv
-BENIGN_LABEL = "BENIGN" #same for benign keyword
+FEATURE_IDX  = {"src_port":0, "dst_port":1, "protocol":2,"fwd_bytes":3,"fwd_packets_IAT_mean":4,"fwd_packets_IAT":5,
+                "Source Port":0,"Destination Port":1,"Protocol":2,"Fwd Packet Length":3, "Flow IAT_mean":4, "Flow IAT":5} #Theses number SHALL BE in the range 0->(FEATURES_NB-1). Every index should also be in the croissant order, according to features int definitions in /include/project_features.h (such as they can be reconstructed by fvifupdate in dt_xdp.bpf.c)
+FEATURE_NAMES = ["F_S_PORT","F_D_PORT","F_PROTOCOL","F_PKT_SIZE","F_IAT_MEAN", "F_IAT"] #Feature names, in the same order as above. Strings should correspond exactly to project_features.h definitions
+LABEL_COL    = "Label" #label col has to be the same in each csv (it can be easily modified by hand)
+BENIGN_LABEL = "BENIGN" #same for benign keyword 
 
 # Load every datasets into a tuple of (X, y) where:
 #   X is a 2D numpy array of shape [n_samples, n_features]. CAN BE REALLY BIG
@@ -68,29 +68,48 @@ def load_datasets(pathes, outpath=None) -> tuple:
                 
             #for the columns that contains mean, std, ... (& are not keys of the dict) -> use them to reconstruct the corresponding feature
             else:
-                # Try to find base feature by removing statistical suffixes
+                # Try to find base feature by removing suffixes
                 base_feat_name = feat_name_csv
-                # Remove common statistical suffixes to find base feature
                 for suffix in ["_mean", "_std", "_skew"]:
                     if suffix in base_feat_name:
                         base_feat_name = base_feat_name.replace(suffix, "").strip()
                         break
                 
-                # Find matching base feature in FEATURE_IDX
-                matching_feat = None
-                for key in FEATURE_IDX.keys():
-                    if key in base_feat_name or base_feat_name in key: # (Be careful about CSV features names. You can still change them easily)
-                        matching_feat = key
-                        break
-                feature_idx = FEATURE_IDX[matching_feat]
-                #if feature is not already reconstructed (because we encounter twice a parameter of the feature : mean & std)
-                if Xi[feature_idx, 0] == 0:
-                    #At this step, we found the OG feature.
-                    # Now, generate a new value for the sample using mean and std from the CSV
-                    
-                    std_col = matching_feat + "_std"
-                    mean_col = matching_feat + "_mean"
-                    Xi[feature_idx, :] = np.maximum(np.random.normal(df[mean_col].astype(np.float64), df[std_col].astype(np.float64)), 0)
+                if base_feat_name in FEATURE_IDX.keys():
+                    feature_idx = FEATURE_IDX[base_feat_name]
+
+                    #if feature is not already reconstructed (because we encounter twice a parameter of the feature : mean & std)
+                    if Xi[feature_idx, 0] == 0:
+                        # At this step, we found the OG feature & it has not been already filled.
+                        # Now, generate a new value for the sample using mean and std (and skew ?) from the CSV.
+
+                        std_col = base_feat_name + "_std"
+                        mean_col = base_feat_name + "_mean"
+                        skew_col = base_feat_name + "_skew" if (base_feat_name + "_skew") in df.columns else None
+
+                        mean_vals = df[mean_col].astype(np.float64).to_numpy()
+                        std_vals = df[std_col].astype(np.float64).to_numpy()
+
+                        if skew_col is not None:
+                            # try to use scipy's skewnorm if available; otherwise fall back to an approximation
+                            try:
+                                from scipy.stats import skewnorm
+                                # build sample array using per-sample skew parameter
+                                a_vals = df[skew_col].astype(np.float64).to_numpy()
+                                samples = np.array([
+                                    skewnorm.rvs(a=float(a), loc=float(m), scale=float(s))
+                                    for m, s, a in zip(mean_vals, std_vals, a_vals)
+                                ])
+                            except Exception:
+                                # fallback: approximate skew by mixing a normal and an exponential term scaled by skew
+                                a_vals = df[skew_col].astype(np.float64).to_numpy()
+                                normal_part = np.random.normal(loc=0.0, scale=1.0, size=len(mean_vals)) * std_vals
+                                exp_part = (np.random.exponential(scale=1.0, size=len(mean_vals)) - 1.0) * (a_vals * std_vals)
+                                samples = mean_vals + normal_part + exp_part
+                        else:
+                            samples = np.random.normal(loc=mean_vals, scale=std_vals)
+
+                        Xi[feature_idx, :] = np.maximum(samples.astype(np.float64), 0)
 
         
         yi = (df[LABEL_COL].str.strip() != BENIGN_LABEL).astype(int).to_numpy() #0 benign, 1 malicious
@@ -148,7 +167,7 @@ def DT_train(X, y, max_depth: int) -> DecisionTreeClassifier:
     return clf, rep
 
 
-def DT_export_c_header(clf: DecisionTreeClassifier, max_depth: int, out_path: str, report=None):
+def DT_export_c_header_and_update_sh(clf: DecisionTreeClassifier, max_depth: int, out_path: str, report=None):
     """
     Converts sklearn tree to the dt_node array format used in dt_xdp.bpf.c.
 
@@ -262,6 +281,79 @@ def DT_export_c_header(clf: DecisionTreeClassifier, max_depth: int, out_path: st
     
     print(f"\n[export]  Written to {out_path}dt_features.h  ({len(FEATURE_NAMES)} features)")
 
+    # ── Write update_params.sh ───────────────────────────────────────────────────────
+    write_update_params_sh(nodes, out_path)
+
+
+def write_update_params_sh(nodes: list, out_path: str):
+    """
+    Generates a bash script that uses bpftool to load the decision-tree nodes
+    into a running BPF map.
+ 
+    Map value layout (8 bytes, little-endian):
+        bytes 0-3 : threshold  (__u32, LE)
+        bytes 4-7 : feature    (__u32, LE)  — full byte, encodes flags + feat_idx
+ 
+    Usage of the generated script:
+        ./update_params.sh <map_id>
+ 
+    The key for node i is simply the 4-byte LE representation of i.
+    """
+ 
+    def u32_to_hex_le(value: int) -> str:
+        """Return a 4-byte little-endian hex string, e.g. '01 00 00 00'."""
+        # Interpret as unsigned 32-bit (handle negative int32 thresholds)
+        v = value & 0xFFFFFFFF
+        return " ".join(f"{(v >> (8 * b)) & 0xFF:02X}" for b in range(4))
+ 
+    sh_path = out_path + "update_params.sh"
+    with open(sh_path, "w") as f:
+        f.write("#!/usr/bin/env bash\n")
+        f.write("# Auto-generated by main.py.\n")
+        f.write("# Loads decision-tree nodes into a BPF map via bpftool.\n")
+        f.write("#\n")
+        f.write("# Usage: sudo ./update_params.sh <map_id>\n")
+        f.write("#\n")
+        f.write("# Map value layout (8 bytes, little-endian):\n")
+        f.write("#   bytes 0-3 : threshold (__u32 LE)\n")
+        f.write("#   bytes 4-7 : feature   (__u32 LE, MSB flags + feat_idx)\n\n")
+ 
+        f.write('if [ -z "$1" ]; then\n')
+        f.write('    echo "Usage: sudo $0 <map_id>"\n')
+        f.write('    exit 1\n')
+        f.write('fi\n\n')
+ 
+        f.write('MAP_ID="$1"\n\n')
+ 
+        for i, (feat, thresh) in enumerate(nodes):
+            key_hex   = u32_to_hex_le(i)
+            thresh_hex = u32_to_hex_le(thresh)
+            feat_hex  = u32_to_hex_le(feat)  # feature byte packed into __u32 LE
+ 
+            # human-readable comment
+            is_defined  = bool(feat & 0b00100000)
+            if is_defined:
+                pass_left  = (feat >> 7) & 1
+                pass_right = (feat >> 6) & 1
+                feat_idx   =  feat & 0b00011111
+                comment = f"node {i}: feat_id={feat_idx} thresh={thresh} pass_left={pass_left} pass_right={pass_right}"
+            else:
+                comment = f"node {i}: leaf / undefined"
+ 
+            f.write(f"# {comment}\n")
+            f.write(
+                f'bpftool map update id "$MAP_ID" '
+                f'key hex {key_hex} '
+                f'value hex {thresh_hex} {feat_hex}\n\n'
+            )
+ 
+        f.write('echo "Done loading $MAP_ID nodes."\n')
+ 
+    import os
+    os.chmod(sh_path, 0o755)
+    print(f"\n[export]  Written to {sh_path}  ({len(nodes)} node updates)")
+
+
 def main():
     if len(sys.argv) < 1:
         print(__doc__)
@@ -281,7 +373,7 @@ def main():
     #print decision tree into standard output (in order to compare with outputed dt_params.h)
     plot_tree(clf, feature_names=(FEATURE_NAMES), class_names=[BENIGN_LABEL, "Malicious"])
     plt.savefig("/home/sacha/Desktop/ebpf_progs/ML/DT/dt_params.png",dpi= 600)
-    DT_export_c_header(clf, max_depth=clf.get_depth()-1, out_path="/home/sacha/Desktop/ebpf_progs/ML/DT/", report=rep) #removing 1 from depth since we are not storing the leaf nodes (nodes without threshold are not sent to bpf, decision to drop or pass is stored in the parent node.)
+    DT_export_c_header_and_update_sh(clf, max_depth=clf.get_depth()-1, out_path="/home/sacha/Desktop/ebpf_progs/ML/DT/", report=rep) #removing 1 from depth since we are not storing the leaf nodes (nodes without threshold are not sent to bpf, decision to drop or pass is stored in the parent node.)
 
 if __name__ == "__main__":
     main()
