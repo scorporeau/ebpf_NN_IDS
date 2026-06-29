@@ -28,8 +28,7 @@
 // This MUST be present or the verifier will reject the program
 char LICENSE[] SEC("license") = "GPL";
 
-// Create a LRU hash maps to count the number of packets and total bytes for each source-destination IP pair
-// LRU = Least Recent Used, delete most unused entries once the map is full.
+// Array that contains the DT nodes.
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __type(value, struct dt_node);
@@ -42,17 +41,19 @@ struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     // Maximum number of entries in the map (adjust as needed)
     __uint(max_entries, (((FEATURES & F_RANGE_FLOW) != 0) ? 2048 : 1));
-    // Key is a __u128 of combined source_ip (32), source_port(16), dest_ip (32), dest_port (16), plus 32 filler bits. (not optimal)
+    // Key is a __u128 of combined source_ip (32), source_port(16), dest_ip (32), dest_port (16), protocol(8) plus 32 filler bits. (not optimal)
     __type(key, __u128);
     // Value is a struct ip_count containing the count and total bytes
     __type(value, struct flow_info);
 } flow_info_map SEC(".maps");
 
+#ifndef SILENT
 // Create a ring buffer map that will be used only if DEBUG == true.
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
-    __uint(max_entries, DEBUG ? 1024*16 : 0); //16KB
+    __uint(max_entries, 1024*16); //16KB
 } events_ring SEC(".maps");
+#endif
 
 //update feature vector with value if, and only if, feature is needed
 static void fvifupdate(__u32 *feature_vector, __u128 feature, __u32 newval) {
@@ -97,7 +98,7 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
         return -3; // error, packet too short for IP header
     }
 
-    //4 : fill net_event vector with features if it exists (if debug)
+    //4 : fill net_event vector with features if it exists (== if debug)
     if (nete) {
         //copy ip info to ip_debug
         nete->dst_ip = ip->daddr;
@@ -139,7 +140,8 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
 
 
     //6 : fill feature vector with flow-based features, if needed.
-    if ((FEATURES & F_RANGE_FLOW) != 0) {
+    if (FEATURES & F_RANGE_FLOW) {
+        //retrieve flow key : ips_ports_ipd_portd_protocol
         __u128 flow_key = ((__u128)ip->saddr << 96) | ((__u128)sport << 80) | ((__u128)ip->daddr << 48) | ((__u128)dport << 32);
         struct flow_info *fi = bpf_map_lookup_elem(&flow_info_map, &flow_key);
         if (fi) { //flow exists
@@ -192,7 +194,6 @@ static inline int classify_dt(__u32 fv[]) {
     //have to use a bounded loop in order to allow the ebpf program to understand taht my loop is short (not enough LOL, it stills detect an infinite loop)
     for (__u8 j = 0; j <= 16; j += 1) {
         //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (3rd MSB = 0): we apply the current decision.
-        //__u32 i_u32 = (__u32) i; //Array keys are always __u32, but we actually need only a __u8
         if ((i >= DT_NODE_NB) || !(node = bpf_map_lookup_elem(&dt_nodes_array, &i)) || ((node->feature & 0b00100000) == 0)) {
             if (pass) {
                 return 1; //pass
@@ -219,18 +220,16 @@ static inline int classify_dt(__u32 fv[]) {
 
 //XDP network listener main function
 SEC("xdp")
-int xdp_trace_net_event(struct xdp_md *ctx)
+int xdp_dt(struct xdp_md *ctx)
 {
     //1: parse the packet and update feature vector.
     //struct feature_vector fv = {0}; //initialize feature vector to 0 to avoid issues when encountering errors
     __u32 fv[FEATURE_NB] = {};//create a FEATURE_NB sized array of __u32 for registering the features of our analyzed packet.
     int ret;
     struct netevent *ne;
-    if (DEBUG) {
-        ne = bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), 0);
-    } else {
-        ne = NULL; //initialize net event to 0 to avoid issues when encountering errors
-    }
+    #ifndef SILENT
+    ne = bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), 0);
+    #endif
 
     //parse the packet & update the feature vector
     switch (parse_update(ctx, fv, ne)) {
