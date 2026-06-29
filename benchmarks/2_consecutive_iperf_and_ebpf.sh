@@ -49,6 +49,7 @@ touch output/config.txt
 #output network configuration in config.txt file for test reliability
 ip a >> output/config.txt
 ethtool -k $IFACE >> output/config.txt
+ethtool -i $IFACE >> output/config.txt
 lshw -c network >> output/config.txt
 
 
