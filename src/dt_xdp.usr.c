@@ -56,7 +56,7 @@ static void print_log(void *ctx, void *data, size_t data_sz)
 }
 
 //Fill the decision tree nodes structure located in the bpf array that the bpf program uses for IDS decision making.
-static int fill_dt_nodes_array(int dt_nodes_array_fd, struct dt_node *dt_nodes_array)
+static int fill_dt_nodes_array(int dt_nodes_array_fd, __u32 *dt_nodes_array)
 {
     for (int i = 0; i < DT_NODE_NB; i++) {
         if (bpf_map_update_elem(dt_nodes_array_fd, &i, &dt_nodes_array[i], BPF_ANY) != 0) {
@@ -68,7 +68,7 @@ static int fill_dt_nodes_array(int dt_nodes_array_fd, struct dt_node *dt_nodes_a
 }
 
 //update parameters and store them in the array (that will be later sent tot the kernel space)
-static void retrieve_dt_parameters(const char *filename, struct dt_node *dt_nodes_array)
+static void retrieve_dt_parameters(const char *filename, __u32 *dt_nodes_array)
 {
     //create a basic DT that drops UDP packets, and pass everything else. Just for testing purposes.
     //the structure is the following :
@@ -112,7 +112,7 @@ static void init_bench_time(int argc, char **argv, int *benchmark_time) {
 int main(int argc, char const **argv)
 {
     //0 some debug tests / prints
-    printf("\n[start] Starting dt_xdp program ...\n\tfeature uids vector   : %d\n\tflow based features   : %d\n\tpacket based features : %d\n", FEATURES, FEATURES & F_RANGE_FLOW, FEATURES & F_RANGE_PACKET);
+    printf("\n[start] Starting dt_xdp program ...\n\tfeature uids vector   : %lld\n\tflow based features   : %lld\n\tpacket based features : %lld\n", FEATURES, FEATURES & F_RANGE_FLOW, FEATURES & F_RANGE_PACKET);
 
     struct dt_xdp_bpf *skel = NULL;
     struct ring_buffer *rb = NULL;
@@ -140,8 +140,8 @@ int main(int argc, char const **argv)
         fprintf(stderr, "Failed to find network interface name: %s\n", NET_INTERFACE);
         goto cleanup;
     }
-    skel->links.xdp_trace_net_event = bpf_program__attach_xdp(skel->progs.xdp_trace_net_event, ifindex);
-    if (!skel->links.xdp_trace_net_event) {
+    skel->links.xdp_dt = bpf_program__attach_xdp(skel->progs.xdp_dt, ifindex);
+    if (!skel->links.xdp_dt) {
         fprintf(stderr, "Failed to attach XDP to network interface\n");
         goto cleanup;
     }
@@ -152,7 +152,7 @@ int main(int argc, char const **argv)
     signal(SIGTERM, sig_handler);
 
     //create ring buffer for debug logs
-    if (DEBUG) {
+    #ifndef SILENT
         rb = ring_buffer__new(bpf_map__fd(skel->maps.events_ring),print_log,NULL,NULL);
         if (!rb) {
             fprintf(stderr, "Failed to create ring buffer\n");
@@ -160,7 +160,7 @@ int main(int argc, char const **argv)
         }
         //print table header
         printf("%-15s:%-5s|%-15s:%-5s|%-8s|%-6s|%-5s\n", "SRC_IP", "PORT", "DST_IP", "PORT", "PROTOC","SIZE", "Dec?");
-    }
+    #endif
 
     //create LRU hash map & decision tree nodes array.
     int map_fd = bpf_map__fd(skel->maps.flow_info_map);
@@ -176,7 +176,7 @@ int main(int argc, char const **argv)
 
     //fill decision tree nodes
     //create array of dt nodes later filled by a function reading parameters from a file outputed by pytorch)
-    struct dt_node dt_nodes_array[DT_NODE_NB] = {}; //init to zero !!!
+    __u32 dt_nodes_array[DT_NODE_NB] = {}; //init to zero !!!
     retrieve_dt_parameters("filename.csv", dt_nodes_array);
     if (fill_dt_nodes_array(dt_nodes_array_fd, dt_nodes_array)) {
         fprintf(stderr, "Failed to fill decision tree nodes array\n");
@@ -189,7 +189,7 @@ int main(int argc, char const **argv)
         //pull ring buffer and handle exceptions or end of benchmark time.
         err = 0;
         time_t t_now = time(NULL);
-        if (DEBUG) {
+        #ifndef SILENT
             err = ring_buffer__poll(rb, TIMEOUT_RINGBUF_POLL /* timeout in ms */);
             //print again header every 30s.
             bool hdr_not_printed = true;
@@ -200,7 +200,7 @@ int main(int argc, char const **argv)
             } else if ((t_now - t_start % 30) == 1) {
                 hdr_not_printed = true;
             }
-        }
+        #endif
         if (err == -EINTR) {
             err = 0;
             exiting = 1;
@@ -223,10 +223,10 @@ int main(int argc, char const **argv)
 cleanup:
     printf("\n...Cleaning up after %d seconds ...\n", (int)difftime(time(NULL), t_start));
     // Clean up resources in reverse order of creation
-    if (DEBUG) {
+    #ifndef SILENT
         // Free the ring buffer
         ring_buffer__free(rb);
-    }
+    #endif
     //the flow hash map & decision tree nodes array will be freed by skeleton destruction.
     // Destroy the skeleton (detaches programs, closes maps)
     dt_xdp_bpf__destroy(skel);

@@ -4,6 +4,7 @@
 // This is generated from kernel BTF and provides ALL kernel types
 // It replaces the need for individual kernel headers
 #include "vmlinux.h"
+#include "../ML/DT/dt_features.h" //needed to have DT_NODE_NB
 
 // libbpf helper macros for CO-RE and BPF operations
 #include <bpf/bpf_helpers.h>
@@ -31,9 +32,9 @@ char LICENSE[] SEC("license") = "GPL";
 // Array that contains the DT nodes.
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
-    __type(value, struct dt_node);
+    __type(value, __u32); //3 bytes (24 bits) for threshold (thus features), 6 bits for feature ID and 2 bits for pass left / pass right (in this order)
     __type(key, __u32); //key is always a __u32 (docs.ebpf.io) but we will use a __u8 in our case (casted to a __u32.)
-    __uint(max_entries, DT_NODE_NB); 
+    __uint(max_entries, 2*DT_NODE_NB+1);//hot-update enabled : qstores 2 trees + 1 binary node
 } dt_nodes_array SEC(".maps");
 
 //Flow LRU hashmap, to process per-flow features (mean_packet_size & time_since_last_packet). In theory, will only be useful if there is some features that requires flow (FEATURES >> 64 != 0)
@@ -48,7 +49,7 @@ struct {
 } flow_info_map SEC(".maps");
 
 #ifndef SILENT
-// Create a ring buffer map that will be used only if DEBUG == true.
+// Create a ring buffer map that will be used to apss information to the user space. (packets info, timestamps and decision)
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, 1024*16); //16KB
@@ -56,7 +57,8 @@ struct {
 #endif
 
 //update feature vector with value if, and only if, feature is needed
-static void fvifupdate(__u32 *feature_vector, __u128 feature, __u32 newval) {
+//  feature_vector is a vector of __u32 of features values (are actually 24 bits features currently)
+static void fvifupdate(__u32 *feature_vector, __u64 feature, __u32 newval) {
     int index = 0;
     if ((FEATURES & feature) != 0) { // if feature is used
         //retrieving feature index
@@ -68,8 +70,8 @@ static void fvifupdate(__u32 *feature_vector, __u128 feature, __u32 newval) {
                 index++;
             }
         }
-        //updating vector
-        feature_vector[index] = newval;
+        //updating vector WITH MAX VALUE 0x00FF FFFF
+        feature_vector[index] = newval > 0xFFFFFF ? 0xFFFFFF : newval;
     }
 }
 
@@ -98,14 +100,16 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
         return -3; // error, packet too short for IP header
     }
 
+    #ifndef SILENT
     //4 : fill net_event vector with features if it exists (== if debug)
     if (nete) {
         //copy ip info to ip_debug
         nete->dst_ip = ip->daddr;
         nete->src_ip = ip->saddr;
         nete->protocol = ip->protocol;
-        nete->packet_size = (data_end - data);
+        nete->packet_size = (data_end - data); // payload + header 
     }
+    #endif
 
 
     //5 : fill feature vector (and / or debug info) with packet-based features.
@@ -156,7 +160,7 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
             fvifupdate(fv, F_SIZE_MEAN, (__u32)(fi->tot_bytes / fi->count));
             fvifupdate(fv, F_SIZE_TOT, fi->tot_bytes);
             fvifupdate(fv, F_PKT_NB, fi->count);
-            fvifupdate(fv, F_IAT, iat_ms > 0xFFFFFFFF ? 0xFFFFFFFF : (__u32)iat_ms);
+            fvifupdate(fv, F_IAT, iat_ms);
             fvifupdate(fv, F_IAT_TOT, fi->tot_IAT);
             fvifupdate(fv, F_IAT_MEAN, (__u32)(fi->tot_IAT / fi->count));
 
@@ -186,15 +190,25 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
 // classify the feature vector, reurns DROP (0) or PASS (1)
 static inline int classify_dt(__u32 fv[]) {
     //packet processing (decision tree).
-    __u32 i = 0; //index of the root node of the tree. key type is __u32 for dt_nodes_array, but it will never be that big.
-    bool pass = true; //default decision = pass;
-    struct dt_node *node;
+    __u32 i = 0; //index of the current node being processed in the tree (not index in map, index of node)
+    __u32 map_idx = 0; //real index of the current node in the dt_nodes map
+    bool map_hui = 0; //map hot-update parameter : 0 = first map, 1 = 2nd map
+    bool pass = true; //default decision = pass packet
+    __u32* node;
     __u32 feature_value;
 
-    //have to use a bounded loop in order to allow the ebpf program to understand taht my loop is short (not enough LOL, it stills detect an infinite loop)
+    //look @ which part of the map to use (maps can store twice the parameters)
+    node = bpf_map_lookup_elem(&dt_nodes_array, &map_idx);
+    // 0 -> map is between indexes 1 and DT_NODE_NB (included)
+    // 1 -> map is between indexes DT_NODE_NB + 1 and 2*DT_NODES_NB (included)
+    map_hui = (*node == 0) ? 0 : 1;
+
+
+
+    //have to use a bounded loop in order to allow the ebpf program to understand taht my loop is short
     for (__u8 j = 0; j <= 16; j += 1) {
         //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (3rd MSB = 0): we apply the current decision.
-        if ((i >= DT_NODE_NB) || !(node = bpf_map_lookup_elem(&dt_nodes_array, &i)) || ((node->feature & 0b00100000) == 0)) {
+        if ((i >= DT_NODE_NB) || !(node = bpf_map_lookup_elem(&dt_nodes_array, &map_idx)) || (node == 0)) {
             if (pass) {
                 return 1; //pass
             } else {
@@ -203,17 +217,22 @@ static inline int classify_dt(__u32 fv[]) {
         }
 
         //else, node is defined AND current node is not a leaf, we need to process decision and update the index.
-
-        feature_value = ((node->feature & 0x1F) < FEATURE_NB) ? fv[node->feature & 0x1F] : 0; //index in the vector is directly equal to the index stored in the DT nodes. More prevention needed in order not to return any error if a wrong index is uploaded into the node.
-        if (feature_value <= node->threshold) {
+        if (((*node) & 0x000000FC) >> 2 < FEATURE_NB) {
+            feature_value = fv[((*node) & 0x000000FC) >> 2];//retrieving feature ID. case with
+        } else {
+            //ERROR : feature index out of bounds
+            return -1;
+        }
+        if (feature_value <= ((*node) >> 8)) {
             //go left
-            pass = node->feature & 0b10000000;
+            pass = ((*node) & 0x00000002) >> 1;//retrieving pass_left
             i = 2*i + 1;
         } else {
             //go right
-            pass = node->feature & 0b01000000;
+            pass = (*node) & 0x00000001;//retrieving pass_right
             i = 2*i + 2;
         }
+        map_idx = (map_hui == 1) ? i+1 : i+DT_NODE_NB+1;
     }
 }
 
@@ -239,6 +258,9 @@ int xdp_dt(struct xdp_md *ctx)
         case 0:
             //success, do nothing (feature vector will be analyzed by the decision tree for drop or pass decision.)
             break;
+        case -1:
+            //ERROR feature index out of bounds (misconfigured DT nodes)
+            goto drop;
         default:
             //any other error (too short for eth header, too short for IP header, too short for TCP/UDP header) = bad packet, drop it.
             goto drop;
@@ -258,25 +280,33 @@ int xdp_dt(struct xdp_md *ctx)
     }
 
 drop:
+    #ifndef SILENT
     if (ne) {
-        ne ->decision = 0;
+        ne->decision = 0;
         bpf_ringbuf_submit(ne, 0);
     }
+    #endif
     return XDP_PASS; //Not actually dropping packets, might cause issue while testing
 dropsilent:
+    #ifndef SILENT
     if (ne) {
         bpf_ringbuf_discard(ne, 0);
     }
+    #endif
     return XDP_PASS; //Not actually dropping packets, might cause issue while testing
 pass:
+    #ifndef SILENT
     if (ne) {
-        ne ->decision = 1;
+        ne->decision = 1;
         bpf_ringbuf_submit(ne, 0);
     }
+    #endif
     return XDP_PASS;
 passsilent:
+    #ifndef SILENT
     if (ne) {
         bpf_ringbuf_discard(ne, 0);
     }
+    #endif
     return XDP_PASS;
 }
