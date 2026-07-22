@@ -14,6 +14,21 @@ fi
 
 MAP_ID="$1"
 
+#retrieve info in the first node about what part of the map is actually in-use
+bpftool map lookup id "$MAP_ID" key hex 00 00 00 00
+
+echo "current DT map in use : $USED_MAP"
+
+if [$USED_MAP -eq 1]; then
+    #map used = 1, fill map 0 (offset = 1)
+
+else
+    # map used = 0, fill map 1 (offset = node_nb + 1)
+
+fi
+
+
+
 # node 0: feat_id=3 thresh=210 pass_left=1 pass_right=0
 bpftool map update id "$MAP_ID" key hex 00 00 00 00 value hex 0E D2 00 00
 
