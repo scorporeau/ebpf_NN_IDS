@@ -9,6 +9,6 @@
 .vscode/
 
 /tex/*
-!/tex/graphics
-!/tex/paper.tex
-!/tex/eBPF_on_smartNIC.bib
+#!/tex/graphics
+#!/tex/paper.tex
+#!/tex/eBPF_on_smartNIC.bib
