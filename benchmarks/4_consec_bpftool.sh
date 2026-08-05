@@ -26,6 +26,9 @@ else
     shift 2
     OBJS=("$@" "no_ebpf")
 fi
+#warn message because m yscript is not perfect
+echo "please run this script from the build directory"
+
 
 #deleting old output files
 echo "Sorry, deleting old outputs if they exist... (press ctrl C in the next 3s to cancel)"
@@ -70,7 +73,7 @@ for BPF_OBJ in $OBJS; do
             if [[ "$BPF_OBJ" == *dt* ]]; then
                 echo "Detected dt object '$BPF_OBJ'."
                 sudo bpftool map
-                read -p "Enter map_id: " MAP_ID
+                read -p "Enter dt_nodes map_id: " MAP_ID
                 if [ -z "$MAP_ID" ]; then
                     echo "map_id is required for dt objects."
                     exit 1
