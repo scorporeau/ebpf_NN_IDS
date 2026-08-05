@@ -13,7 +13,7 @@ if [ -z "$1" ]; then
 fi
 
 MAP_ID="$1"
-NODE_NB=7
+NODE_NB=15
 
 KEYS_MAP0=(
     "01 00 00 00"
@@ -23,9 +23,6 @@ KEYS_MAP0=(
     "05 00 00 00"
     "06 00 00 00"
     "07 00 00 00"
-)
-
-KEYS_MAP1=(
     "08 00 00 00"
     "09 00 00 00"
     "0A 00 00 00"
@@ -33,6 +30,25 @@ KEYS_MAP1=(
     "0C 00 00 00"
     "0D 00 00 00"
     "0E 00 00 00"
+    "0F 00 00 00"
+)
+
+KEYS_MAP1=(
+    "10 00 00 00"
+    "11 00 00 00"
+    "12 00 00 00"
+    "13 00 00 00"
+    "14 00 00 00"
+    "15 00 00 00"
+    "16 00 00 00"
+    "17 00 00 00"
+    "18 00 00 00"
+    "19 00 00 00"
+    "1A 00 00 00"
+    "1B 00 00 00"
+    "1C 00 00 00"
+    "1D 00 00 00"
+    "1E 00 00 00"
 )
 
 read_current_map() {
@@ -55,23 +71,39 @@ read_current_map() {
 }
 
 VALUES=(
-    "0E D2 00 00"
-    "07 D2 01 00"
-    "0A 0B 00 00"
-    "03 63 BF 00"
-    "02 E8 01 00"
-    "07 05 01 00"
-    "11 A0 7E 01"
+    "0A 10 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
+    "00 00 00 00"
 )
 
 COMMENTS=(
-    "node 0: feat_id=3 thresh=210 pass_left=1 pass_right=0"
-    "node 1: feat_id=1 thresh=466 pass_left=1 pass_right=1"
-    "node 2: feat_id=2 thresh=11 pass_left=1 pass_right=0"
-    "node 3: feat_id=0 thresh=48995 pass_left=1 pass_right=1"
-    "node 4: feat_id=0 thresh=488 pass_left=1 pass_right=0"
-    "node 5: feat_id=1 thresh=261 pass_left=1 pass_right=1"
-    "node 6: feat_id=4 thresh=97952 pass_left=0 pass_right=1"
+    "node 0: feat_id=2 thresh=16 pass_left=1 pass_right=0"
+    "node 1: leaf / undefined"
+    "node 2: leaf / undefined"
+    "node 3: leaf / undefined"
+    "node 4: leaf / undefined"
+    "node 5: leaf / undefined"
+    "node 6: leaf / undefined"
+    "node 7: leaf / undefined"
+    "node 8: leaf / undefined"
+    "node 9: leaf / undefined"
+    "node 10: leaf / undefined"
+    "node 11: leaf / undefined"
+    "node 12: leaf / undefined"
+    "node 13: leaf / undefined"
+    "node 14: leaf / undefined"
 )
 
 raw_used=$(read_current_map)
