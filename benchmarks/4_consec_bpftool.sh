@@ -6,8 +6,8 @@ HELP="loading & attaching provided .o xdp objects while lsitening for iperf3 on 
 args:
 network interface
 ip addr
-offload boolean : 1 = offload, driver and skb (netronome cards), 0 = driver and skb only (other : mlx5 ...)
-xdp .o objects"
+xdp .o objects
+Note: offload is auto-detected via 'ethtool -i' (netronome firmware reports 'bpf')"
 
 
 # retrieve net interface name from 1st arg
@@ -26,19 +26,21 @@ else
     IP_ADDR=$2
 fi
 
-#retrieve offload boolean from 3rd arg
-if [ -z "$3" ]; then
-    echo "$HELP"
-    exit 1
+# Auto-detect offload boolean via ethtool -i driver/firmware info
+# If the ethtool output contains the string "bpf" (case-insensitive)
+# we consider the NIC in bpf/offload mode (OFFL=1), otherwise 0.
+if ethtool -i "$IFACE" 2>/dev/null | grep -qi 'bpf'; then
+    OFFL=1
 else
-    OFFL=$3
+    OFFL=0
 fi
 
 #retrieving ebpf objects from 3rd+ args
-if [ -z "$4" ]; then
+# objects start at argument 3 now (iface, ip, [objs...])
+if [ -z "$3" ]; then
     OBJS=("no_ebpf")
 else
-    shift 3
+    shift 2
     OBJS=("$@" "no_ebpf")
 fi
 #warn message because m yscript is not perfect
