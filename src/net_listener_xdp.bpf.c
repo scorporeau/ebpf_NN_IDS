@@ -37,7 +37,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __uint(max_entries, 8); //1 entry for each skipped ring buf reservation possibility (ring buff full, not IP, too short for eth, too short for ip, too short for tcp/udp)
-    __type(key, __u32);
+    __type(drop_key, __u32);
     __type(value, __u64);
 } drop_counter SEC(".maps");
 #endif
@@ -47,7 +47,7 @@ struct {
 // struct {
 //     __uint(type, BPF_MAP_TYPE_PROG_ARRAY); 
 //     __uint(max_entries, 256);
-//     __type(key, u32);
+//     __type(drop_key, u32);
 //     __type(value, u32);
 // } progs SEC(".maps");
 
@@ -121,14 +121,16 @@ static inline int parse_pack(struct xdp_md *ctx, struct netevent *e)
 SEC("xdp")
 int xdp_trace_net_event(struct xdp_md *ctx)
 {
+    #ifndef SILENT
     __u64 t0 = bpf_ktime_get_ns();
+    #endif
     struct netevent *e;
-    __u32 key = -1;
+    __u32 drop_key = -1;
     #ifndef SILENT
     //reserve space in the ring buffer
     e = bpf_ringbuf_reserve(&events_ring, sizeof(*e), 0);
     if (!e) {
-        key = 0;
+        drop_key = 0;
         goto discard;
     }
     #else
@@ -136,36 +138,45 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     struct netevent e_dummy;
     e = &e_dummy;
     #endif
-    __u64 t1 = bpf_ktime_get_ns();
 
+    #ifndef SILENT
+    __u64 t1 = bpf_ktime_get_ns();
+    #endif
 
     //parse the packet into the event structure, returning error codes (as protocol) if parsing fails :
     int err = parse_pack(ctx, e);
 
+    #ifndef SILENT
     __u64 t2 = bpf_ktime_get_ns();
     e->t_parsing = ((t2 - t1) >= 0xFFFF ? 0xFFFF : (__u16) t2-t1);
     e->t_tot = ((t2 - t0) >= 0xFFFF ? 0xFFFF : (__u16) t2-t0);
     e->t_classification = 0; //not relevant here
     e->decision = 0; //not relevant here
+    #else
+    e->t_parsing = 0;
+    e->t_tot = 0;
+    e->t_lassification = 0;
+    e->decision = 0;
+    #endif
     
     if (err == -1) {
         // Packet too short for eth header
-        key = 1;
+        drop_key = 1;
         goto discard;
     } else if (err == -2) {
-        key = 2; // Not an IP packet
+        drop_key = 2; // Not an IP packet
         goto discard;
     } else if (err == -3) {
-        key = 3; // Packet too short for IP header
+        drop_key = 3; // Packet too short for IP header
         goto discard;
     } else if (err == -4) {
-        key = 4; // Packet too short for TCP header
+        drop_key = 4; // Packet too short for TCP header
         goto discard;
     } else if (err == -5) {
-        key = 5; // Packet too short for UDP header
+        drop_key = 5; // Packet too short for UDP header
         goto discard;
     } else if (err < 0) {
-        key = 6; // Other parsing error
+        drop_key = 6; // Other parsing error
         goto discard;
     }
     
@@ -181,10 +192,10 @@ discard:
     if (e) {
         bpf_ringbuf_discard(e, 0);
     }
-    if (key >= 0) {
-        __u64 *cnt = bpf_map_lookup_elem(&drop_counter, &key);
+    if (drop_key >= 0) {
+        __u64 *cnt = bpf_map_lookup_elem(&drop_counter, &drop_key);
         if (cnt) {
-            __sync_fetch_and_add(cnt, 1);
+            __sync_fetch_and_add(cnt, 1); //add 1 to drop counter (debug)
         }
     }
     return XDP_PASS; //for now, still pass the packet
