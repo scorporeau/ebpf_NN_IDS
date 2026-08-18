@@ -289,14 +289,14 @@ drop:
         bpf_ringbuf_submit(ne, 0);
     }
     #endif
-    return XDP_PASS; //Not actually dropping packets, might cause issue while testing
+    return XDP_DROP; //Not actually dropping packets, might cause issue while testing
 dropsilent:
     #ifndef SILENT
     if (ne) {
         bpf_ringbuf_discard(ne, 0);
     }
     #endif
-    return XDP_PASS; //Not actually dropping packets, might cause issue while testing
+    return XDP_DROP; //Not actually dropping packets, might cause issue while testing
 pass:
     #ifndef SILENT
     if (ne) {
