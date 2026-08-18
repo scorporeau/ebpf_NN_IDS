@@ -113,13 +113,31 @@ for BPF_OBJ in "${OBJS[@]}"; do
             #ATTACH
             sudo bpftool net attach $MODE pinned /sys/fs/bpf/bpf_bench4 dev $IFACE
 
-            #IPERF
-            #the eBPF program is now running, let's run the iperf AND flamegraph. (will not be interesting for xdpoffload ?) TODO Flamegraph handling
+            #PERFORMANCES : IPERF
             #run the server for only one connection (since each one will be outputted to a different file)
             touch "./output/iperf_$BPF_OBJ $MODE.txt"
             echo "waiting for iperf3 client to connect ..."
             iperf3 -s -V --one-off --timestamps --bind $IP_ADDR >> "./output/iperf_$BPF_OBJ $MODE.txt"
-            echo "iperf3 finished running ! Detaching ebpf script"
+            echo "iperf3 finished running !"
+
+            #PERFORMANCE : bpf_stats
+            #run a second time with bpf_stats enabled
+            echo "running again with bpf_stats enabled"
+            sudo sysctl -w kernel.bpf_stats_enabled=1
+            #running iperf3 in background, and running bpftool prog show every 1s
+            echo "waiting for iperf3 client to connect ..."
+            iperf3 -s -V --one-off --timestamps -i 10 --bind $IP_ADDR >/dev/null &
+            IPERF_PID=$!
+            # collect run_time_ns and run_cnt while iperf3 runs
+            while kill -0 "$IPERF_PID" 2>/dev/null; do
+                # use awk to retrieve all the metrics at once
+                sudo bpftool prog show pinned /sys/fs/bpf/bpf_bench4 >> "./output/run_metrics_$BPF_OBJ $MODE.txt"
+                sleep 1
+            done
+            wait "$IPERF_PID"
+            echo "iperf3 finished running !"
+            sudo sysctl -w kernel.bpf_stats_enabled=0
+
 
             #DETACH
             sudo bpftool net detach $MODE dev $IFACE

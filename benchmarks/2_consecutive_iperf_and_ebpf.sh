@@ -41,8 +41,6 @@ rm -r output
 
 #creating folders & file
 mkdir output
-mkdir output/iperf
-mkdir output/ebpf
 touch output/config.txt
 
 
@@ -60,14 +58,14 @@ for BPF_SCRIPT in "${SCRIPTS[@]}"; do
 
     #attach & run ebpf script (if != no_ebpf)
     if [ "$BPF_SCRIPT" != "no_ebpf" ]; then
-        touch "./output/ebpf/$BPF_SCRIPT$SUFFIX_NAME.csv"
-        ../build/$BPF_SCRIPT 1 0 1 >> "./output/ebpf/$BPF_SCRIPT$SUFFIX_NAME.csv" &
+        touch "./output/ebpf_$BPF_SCRIPT$SUFFIX_NAME.csv"
+        ../build/$BPF_SCRIPT 1 0 1 >> "./output/ebpf_$BPF_SCRIPT$SUFFIX_NAME.csv" &
         PID_BPF=$!
     fi
 
     #run the server for only one connection (since each one will be outputted to a different file)
-    touch "./output/iperf/$BPF_SCRIPT$SUFFIX_NAME.txt"
-    iperf3 -s -V --one-off --bind $IP_ADDR >> "./output/iperf/$BPF_SCRIPT$SUFFIX_NAME.txt" #&
+    touch "./output/iperf_$BPF_SCRIPT$SUFFIX_NAME.txt"
+    iperf3 -s -V --one-off --bind $IP_ADDR >> "./output/iperf_$BPF_SCRIPT$SUFFIX_NAME.txt" #&
     #PID_IPERF=$!
 
     #wait for iperf3 to finish
