@@ -199,6 +199,10 @@ static inline int classify_dt(__u32 fv[]) {
 
     //look @ which part of the map to use (maps can store twice the parameters)
     node = bpf_map_lookup_elem(&dt_nodes_array, &map_idx);
+    // If the map hasn't been initialized yet, avoid dereferencing a NULL pointer.
+    if (!node) {
+        return pass ? 1 : 0;
+    }
     // 0 -> map is between indexes 1 and DT_NODE_NB (included)
     // 1 -> map is between indexes DT_NODE_NB + 1 and 2*DT_NODES_NB (included)
     map_hui = (*node == 0) ? 0 : 1;
@@ -207,23 +211,20 @@ static inline int classify_dt(__u32 fv[]) {
 
     //have to use a bounded loop in order to allow the ebpf program to understand taht my loop is short
     for (__u8 j = 0; j <= 16; j += 1) {
-        //if node undefined (tree not initialized), index too big (arrived @ end of the DT),or arrived at a leaf (3rd MSB = 0): we apply the current decision.
-        if ((i >= DT_NODE_NB) || !(node = bpf_map_lookup_elem(&dt_nodes_array, &map_idx)) || (node == 0)) {
-            if (pass) {
-                return 1; //pass
-            } else {
-                return 0; //drop
-            }
+        node = bpf_map_lookup_elem(&dt_nodes_array, &map_idx); //retrieve current node
+        //if index too big (arrived @ end of the DT) OR arrived at a leaf / undef : we apply the current decision.
+        if ((i >= DT_NODE_NB) || !node || (node == 0)) {
+            return pass ? 1 : 0;
         }
 
         //else, node is defined AND current node is not a leaf, we need to process decision and update the index.
         if (((*node) & 0x000000FC) >> 2 < FEATURE_NB) {
-            feature_value = fv[((*node) & 0x000000FC) >> 2];//retrieving feature ID. case with
+            feature_value = fv[((*node) & 0x000000FC) >> 2];//retrieving feature ID.
         } else {
             //ERROR : feature index out of bounds
             return -1;
         }
-        if (feature_value <= ((*node) >> 8)) {
+        if (feature_value <= ((*node) >> 8)) { //(*node) >> 8 = Threshold
             //go left
             pass = ((*node) & 0x00000002) >> 1;//retrieving pass_left
             i = 2*i + 1;
@@ -232,7 +233,9 @@ static inline int classify_dt(__u32 fv[]) {
             pass = (*node) & 0x00000001;//retrieving pass_right
             i = 2*i + 2;
         }
-        map_idx = (map_hui == 1) ? i+1 : i+DT_NODE_NB+1;
+        // map_hui == 0 -> use indexes 1..DT_NODE_NB
+        // map_hui == 1 -> use indexes DT_NODE_NB+1 .. 2*DT_NODE_NB
+        map_idx = (map_hui == 0) ? i+1 : i+DT_NODE_NB+1;
     }
 }
 
