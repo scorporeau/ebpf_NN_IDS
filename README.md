@@ -1,41 +1,125 @@
 # Introduction
+This project attemps to benchmark some eBPF's XDP capabilities, especially XDP offload and driver modes.
+More specefically, it benchmarks ML-based IDS (Intrusion Detection System) using eBPF in order to run it on smartNICs.
 
-This is an attempt to create an IDS (Intrusion Detection System) based on eBPF in order to run it on smartNICs.
+The motivation comes from the statement of Bachl et al., 2022 [2] that an ML based IDS can be implemented on eBPF (with some challenges such as the non turing completeness of eBPF) and are (20%) faster than the same IDS implemented on the user space. However, we still take into account TODO DEMISTIFICATION that are more dubitative about the ability of eBPF to be significantly faster thant classical user-space code.
 
-Zhang et al. (2024) [1] have done a similar work, this is an attemp to go more in depth on the eBPF script to use it in production, their code was a proof-of concept.
+## Quick technology presentation
 
-The motivation comes from the statement of Bachl et al., 2022 [2] that an ML based IDS can be implemented on eBPF (with some challenges such as the non turing completeness of eBPF) and are (20%) faster than the same IDS implemented on the user space.
+![life of an eBPF program through the user and kernel space](figs/eBPF%20life.png "life of an eBPF program through the user and kernel space")
 
-# Run the project
+eBPF is a kernel feature that is able to run user-provided code into the kernel, at different hooks. It is particularely useful in networking.
 
 
-First, you have to install the required dependencies (might depends of your OS, I used ubuntu 22.04)
 
-`apt install libbpf-dev make gcc clang`
+
+
+
+
+
+
+
+
+
+# How to run this project
+
+## install dependencies
+Under Ubuntu / debian, you'll need to install the following :
+`apt install make gcc clang`
 
 Then, you have to generate the vmlinux.h file that contains all information about your kernel.
 `bpftool btf dump file /sys/kernel/btf/vmlinux format c > include/vmlinux.h`
-Note that (I think) the vmlinux file is created again by makefile in the build directory, but it is still useful to have it in your include directory sincs it helps for debugging with an IDE. I use VScode and it allows to ctrl+click on structures defined in vmlinux.h to see their code.
-
-Then, you can rune the `make` command that compile all C code (eBPF kernel space code, and C user space code).
-The code is outputed in the `/build` directory.
-
-Then, to run any of your script, you can execute its corresponding binary file. The binary of file `first_main.usr.c` is located in `./build/first_main` (the binary need admin privileges to attach the eBPF program).
-
-My project was built & runned with the linux kernel version 6.17.0-20-generic
-
-# Coding new programs
 
 
-There is some rules on this project. First, we have to be conscious of how does eBPF works  [3,4] , and clearly separate kernel space / user space scripts.
+You also have to install libbpf, but we will have to recompile locally libbpf from source, since the version available with apt might be outdated (v0.5 in our kernel sources).
+In order to do that, you simply have to download the zip file from the [libbpf github](https://github.com/libbpf/libbpf) and follow the instructions on the readme.
 
-All the C code has to be located under /src, and named .bpf.c and .usr.c for respectively the kernel space eBPF code and user space code.
+## build
 
-Kernel code is the eBPF code, so it has to ise eBPF coding rules (no infinite loops : there is a max number of instructions, etc). The user space and kernel space code can communicate via the eBPF maps.
 
-## User space code
+Once everything is set up, simply run the `make` command in the root directory, it will compile everything into the newly created `./build` directory, which should look something like this :
 
-The code is not running on the kernel space unless called with a user space code :
+```text
+build
+├── dt_xdp
+├── dt_xdp.bpf.o
+├── dt_xdp.skel.h
+├── dummy_xdp.bpf.o
+├── dummy_xdp_drv
+├── dummy_xdp_hw
+├── dummy_xdp_skb
+├── dummy_xdp.skel.h
+├── net_listener
+├── net_listener.bpf.o
+├── net_listener.skel.h
+├── net_listener_tc
+├── net_listener_tc.bpf.o
+├── net_listener_tc.skel.h
+├── net_listener_xdp.bpf.o
+├── net_listener_xdp_drv
+├── net_listener_xdp_hw
+├── net_listener_xdp_skb
+├── net_listener_xdp.skel.h
+└── vmlinux.h
+```
+
+If anything is missing, all the clues needed for debugging should be outputted by `make`. Usually, you will also see some warnings coming from our C code.
+
+The .o objects files are used directly with `bpftool`, and all the others files are used with `libbpf`.
+
+## Run with bpftool
+bpftool is a tool for inspection and simple manipulation of eBPF programs and maps. (bpftool man page)
+
+`bpftool` needs more user inputs to run XDP programs, but I think it is a good way to understand the basics about eBPF programs. Anyway, I did not achieve to load XPD offloaded with the current `netronome` and `libbpf` software versions (even though `bpftool` uses `libbpf` calls under the hood).
+
+bpftool uses directly the eBPF machinecode `.o` files to attach and load it into the kernel. The table belows resume how to use pinning in bpftool to load and attach programs.
+
+| step | `bpftool` corresponding(s) command(s) |
+| ---- | ------------------------------- |
+| load & verify eBPF program | `bpftool prog load <bpf>.o /sys/fs/bpf/<whatever> type xdp` |
+| load & verify eBPF program (hw offload) | `bpftool prog load <bpf>.o /sys/fs/bpf/<whatever> type xdp offload_dev <net_interface>` |
+| attach eBPF program | `bpftool net attach <mode> pinned /sys/fs/bpf/<whatever> dev <net_interface>` |
+| detach | `bpftool net detach <mode> dev <net_interface>` |
+| unload | `rm /sys/fs/bpf/<whatever>` |
+
+
+## Run with libbpf (deprecated)
+`make` compile and produce all the code needed for libbpf usage.in the `build` directory, you can find, among the files already described for the bpftool usage, the compiled user-space program that usually attach and load the corresponding bpf kernel-space code, while handling the reading of debug maps (if )
+
+
+
+
+# ML parameters
+The ML-based eBPF scripts need to use some parameters. Since we did not wanted to hardcode parameters in the script itself, they are provided in the `ML` folder.
+
+## DT
+The current used-parameters of the DT are located under `ML/DT`.
+
+`dt_features.h` holds information about the current features used for the DT. They cannot be changed until a new compilation of the project. It is used by both bpftool and libbpf, since it is mandatory for creating the data structures.
+
+`dt_params.h` contains the parameters of the DT. It is only used while running "in libbpf mode" to load parameters at the beggining.
+
+`update_params.sh` allow to hot-update the parameters of te DT while the eBPF script is running. Since the "bpftool" approach does not load automatically the parameters, you'll have to initialize the parameters with it too.
+
+If you want to use DT parameters from our example folder,
+just overwrite the current `dt_features.h dt_params.h update_params.sh` files under `ML/DT` with the corresponding files present in `ML/DT/examples`
+
+
+
+
+# eBPF code
+
+## kernel-space eBPF code
+
+## user-space
+
+### bpftool
+`bpftool` usage is resumed nicely in their manual page. It misses some features such as polling ringbuffers or advanced maps modification.
+There are also more ways to attach or load programs than the ones presented in the table before.
+
+### libbpf
+`libbpf` allows to code user-space code in C. This code can automatically load, attach and detach the eBPF kernel-space code.
+Here is a quick explanation of the basics of `libbpf` user-space code, you can also look at our `.usr.c` code for more advanced code.
 
 <blockquote>
 #include "first.skel.h"
@@ -52,87 +136,13 @@ err = first_bpf__load(skel);
 
 err = first_bpf__attach(skel);
 </blockquote>
-
 extract of [first_main.usr.c](/src/first_main.usr.c)
 
-`first` here is the name of the program, but has to be replaces by the name of your .bpf.c program.
+# Future work
 
-Note that this code is written according to the first.bpf.c script, but you have to rename the functions and import according to your file name.
- 
-## Kernel space code
+In the future, there is plenty of work that still has to be done.
 
-The kernel space code must be written according to the libbpf documentation found online [3,4].
+benchmark properly a NN
 
+RF well implemented
 
-# Project steps
-
-## 1) Comparing Before and after kernel parsing
-
-In this project, we will be parsing network packets to do IDS. Since ~99% of the packets won't be dropped, they will be parsed 2 times in case of using XDP (XDP parses raw packets to analyze them).
-
-It is said [7] that because XDP is the lowest-level of eBPF that can be implemented, it is the more efficient. (on RX side, for TX packets, TC is the lowest one)
-
-The first benchmark will be a performance comparison between XDP and standard TC for parsing incoming network packets, considering 100% transmission. Such as [2], we will run experiments of the # of packets passed through our script for a fixed time. The 
-
-## 2) Comparing different ML techniques
-
-In order to implement our IDS with ML at the kernel level, we have to chose what to use in order to classify our packets as intrusive or not. [???] has already made some studies about the best ML technique, which seems to be a Decision tree.
-
-We will still study the use of a basic NN [1], a Decision tree, a random forest
-
-
-## 3) # of IPs encountered evaluation
-
-For a first estimation of the number of IPs addresses encountered during random tasks involving internet, I had to make a benchmark that outputs the nb of IP addresses every few seconds to estimate a coherent number. Ill write each website visited on a specialized .md under /benchmarks.
-
-Even if this benchmark is not that useful, The code could be reused in the ML implementation.
-
-The script that I've impemented is `count_IPs_xdp`, it uses a LRU (Least Recent Used) Hashmap (directy from ebpf libraries) to remmeber of the IPs. This means that it forgets really old incoming IPs in case of filled map. It might be used in production thanks to this feature.
-
-The results are provided in this table. I surfed on random websites on the internet. Some benchmark while working, some browsing on the websites i'm used to go, ...
-*log files in `/benchmark/nb_IPs`, not uploaded them for security purposes*
-
-| benchmark nb | time | # of IPs | behaviors |
-| ------------ | ---- | -------- | --------- |
-| 1 | 1min | 87 | youtube, git DL, zimbra mail updating, notion browsing, claude AI updating |
-| 2 | 10min55s | 269 | random internet surfing, email browsing, git cloning, ssh@ my home university, youtube & twitch, linkedIn browsing, email consulting, google browsing
-| 3 | 24min21s | 343 | random internet tasks (not intense)
-
-## 4) Data choice
-
-In order to implement ML techniques, we have to use some databases of packet captures in order to train our programs. [11] present many of theses databases. The following table shows the chosen (or not) databases :
-
-| database_name | size | Chosen ? | Desc | link |
-| ------------- | ---- | -------- | ---- | ---- |
-| CICDDoS2019 | 25GB | Yes | Various DDoS Attacks. pcaps included. | [unb.ca](https://www.unb.ca/cic/datasets/ddos-2019.html) |
-| DEDALE | 8.2TB | No | On the network side, the labels are provided at the flow level, not the packet level. | [inria.fr](https://dedale.inria.fr/download.html) |
-| AIT Log Dataset | 206GB | No | Cannot retrieve labels per pcap | [zenodo.org](https://zenodo.org/records/5789064) |
-# Discussion
-
-In order to analyze your traffic (with net_listener scripts) you can easily check information about IPs on [8], information about protocols on [9] and information about TCP/UDP ports on [10]
-
-Wouldn't be more interesting to not at all parse the packet and just use unparsed packet ? let the network learn the parsing ? (maybe not a good idea, because we need more global information as the last packet recieved from this IP, mean size of packets by this IP, ... for the NN to do great work, according to literature.)
-
-
-# References
-[1] Real-Time Intrusion Detection and Prevention  with Neural Network in Kernel using eBPF *Junyu Zhang, Pengfei Chen, Zilong He, Hongyang Chen, and Xiaoyun Li*, 2024 https://ieeexplore.ieee.org/document/10646951/
-
-[2] A flow-based IDS using Machine Learning in eBPF http://arxiv.org/abs/2102.09980
-
-[3] libbpf documentation https://libbpf.readthedocs.io/en/latest/
-
-[4] https://docs.kernel.org/bpf/libbpf/index.html
-
-[5] oneuptime eBPF coding tutorial with libbpf https://oneuptime.com/blog/post/2026-01-07-ebpf-libbpf-portable-development/view
-
-[6] linux kernel events https://www.kernel.org/doc/html/v5.4/trace/events.html
-
-[7] Fast-packet processing...... Vieira et al., 2020
-
-[8] https://whatismyipaddress.com/
-
-[9] https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers
-
-[10] https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers
-
-[11] https://fkie-cad.github.io/COMIDDS/content/all_datasets/
