@@ -37,7 +37,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __uint(max_entries, 8); //1 entry for each skipped ring buf reservation possibility (ring buff full, not IP, too short for eth, too short for ip, too short for tcp/udp)
-    __type(drop_key, __u32);
+    __type(key, __u32);
     __type(value, __u64);
 } drop_counter SEC(".maps");
 #endif
