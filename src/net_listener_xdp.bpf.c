@@ -155,7 +155,7 @@ int xdp_trace_net_event(struct xdp_md *ctx)
     #else
     e->t_parsing = 0;
     e->t_tot = 0;
-    e->t_lassification = 0;
+    e->t_classification = 0;
     e->decision = 0;
     #endif
     
