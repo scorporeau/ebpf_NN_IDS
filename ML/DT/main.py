@@ -248,7 +248,7 @@ def DT_export_c_header_and_update_sh(clf: DecisionTreeClassifier, max_depth: int
         f.write("// Include this file in dt_xdp.usr.c to load the decision tree.\n\n")
         f.write("#ifndef DT_PARAMS_H\n")
         f.write("#define DT_PARAMS_H\n\n")
-        f.write(f"#define DT_NODE_NB {max_nodes+1}\n\n")
+        f.write(f"#define DT_NODE_NB {max_nodes}\n\n")
         f.write("static __u32 trained_dt_nodes[] = {\n")
         for i, node_value in enumerate(nodes):
             if node_value == 0:
