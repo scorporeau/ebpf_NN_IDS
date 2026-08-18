@@ -59,20 +59,17 @@ struct {
 //update feature vector with value if, and only if, feature is needed
 //  feature_vector is a vector of __u32 of features values (are actually 24 bits features currently)
 static void fvifupdate(__u32 *feature_vector, __u64 feature, __u32 newval) {
-    int index = 0;
-    if ((FEATURES & feature) != 0) { // if feature is used
-        //retrieving feature index
-        for (__u64 curr_f = 1; curr_f < feature;curr_f <<= 1)
-        {
-            //loop for each feature, starting from the LSB features.
-            if ((curr_f & FEATURES) != 0) {
-                // if this feature is present in the chosen features :
-                index++;
-            }
-        }
-        //updating vector WITH MAX VALUE 0x00FF FFFF
-        feature_vector[index] = newval > 0xFFFFFF ? 0xFFFFFF : newval;
-    }
+    // Only update if the feature is enabled in FEATURES
+    if ((FEATURES & feature) == 0)
+        return;
+
+    // Compute the index as the number of enabled features below 'feature'.
+    // This is equivalent to the previous loop but safer and clearer.
+    __u64 lower_mask = FEATURES & (feature - 1);
+    int index = __builtin_popcountll(lower_mask);
+
+    // Clamp to 24 bits and store
+    feature_vector[index] = newval > 0xFFFFFF ? 0xFFFFFF : newval;
 }
 
 // parse the packet located in the context, and fill flow_info_map and the feature vector with the required information.
@@ -210,7 +207,7 @@ static inline int classify_dt(__u32 fv[]) {
 
 
     //have to use a bounded loop in order to allow the ebpf program to understand taht my loop is short
-    for (__u8 j = 0; j <= 16; j += 1) {
+    for (__u8 j = 0; j <= 16; j += 1) { //j = depth
         node = bpf_map_lookup_elem(&dt_nodes_array, &map_idx); //retrieve current node
         //if index too big (arrived @ end of the DT) OR arrived at a leaf / undef : we apply the current decision.
         if ((i >= DT_NODE_NB) || !node || (node == 0)) {
