@@ -4,7 +4,7 @@
 #ifndef DT_PARAMS_H
 #define DT_PARAMS_H
 
-#define DT_NODE_NB 8
+#define DT_NODE_NB 7
 
 static __u32 trained_dt_nodes[] = {
     0x0000D20E,  // [0] feat_id=3 thresh=210 pass_left=1 pass_right=0
