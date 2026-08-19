@@ -14,17 +14,22 @@ ARCH := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
 # Include paths for headers
 INCLUDES := -Iinclude -Ibuild
 
+# Build mode toggle. Default build does not define NOKTIME.
+# `make noktime` will set NOKTIME=1 and add the preprocessor define.
+NOKTIME ?= 0
+
 # Compiler flags for eBPF programs
 # -g: Include debug info (required for BTF)
 # -O2: Optimization level (required for some BPF features)
 # -target bpf: Generate BPF bytecode
 # -D__TARGET_ARCH_$(ARCH): Define target architecture for CO-RE
-BPF_CFLAGS := -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH)
+# Optional -DNOKTIME when building the noktime variant
+BPF_CFLAGS = -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) $(if $(filter 1,$(NOKTIME)),-DNOKTIME,)
 
 # Compiler flags for user-space program
 # -Wall -Wextra: Enable warnings
 # -g: Debug info for debugging
-USER_CFLAGS := -Wall -Wextra -g $(INCLUDES)
+USER_CFLAGS = -Wall -Wextra -g $(if $(filter 1,$(NOKTIME)),-DNOKTIME,) $(INCLUDES)
 
 # Libraries for user-space program
 # -lbpf: libbpf library
@@ -48,9 +53,13 @@ USER_BINS := $(patsubst $(SRC_DIR)/%.usr.c,$(BUILD_DIR)/%,$(USER_SOURCES))
 # GNU make would otherwise treat them as intermediate and delete them.
 .SECONDARY: $(BPF_OBJECTS) $(SKELETONS)
 
-# Default target: build everything
-.PHONY: all
+# Default target: build everything without NOKTIME
+.PHONY: all noktime
 all: $(USER_BINS)
+
+# Build the same project with NOKTIME enabled
+noktime: NOKTIME := 1
+noktime: all
 
 # Create build directory if it doesn't exist
 $(BUILD_DIR):

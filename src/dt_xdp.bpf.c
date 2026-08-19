@@ -64,7 +64,6 @@ static void fvifupdate(__u32 *feature_vector, __u64 feature, __u32 newval) {
         return;
 
     // Compute the index as the number of enabled features below 'feature'.
-    // This is equivalent to the previous loop but safer and clearer.
     __u64 lower_mask = FEATURES & (feature - 1);
     int index = __builtin_popcountll(lower_mask);
 
@@ -78,11 +77,14 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
     // retrieving packet data, size and timestamp
     void *data = (void *)(long)ctx->data;
     void *data_end = (void *)(long)ctx->data_end;
-    __u64 time_now = bpf_ktime_get_ns(); //time when the packet was recieved in ns
-
+    #ifndef NOKTIME
+    __u64 time_now = 0;//bpf_ktime_get_ns(); //time when the packet was recieved in ns
+    #else
+    __u64 time_now = 0;
+    #endif
     //1 parse eth header
     struct ethhdr *eth = data;
-    if (eth + 1 > data_end) {
+    if (data + sizeof(struct ethhdr) > data_end) {
         return -1; // error, packet too short
     }
 
@@ -92,11 +94,10 @@ static inline int parse_update(struct xdp_md *ctx, __u32 fv[], struct netevent *
     }
 
     //3 parse ip header
-    struct iphdr *ip = data + sizeof(struct ethhdr);
-    if (ip + 1 > data_end) {
+    if (data + sizeof(struct ethhdr) + sizeof(struct iphdr) > data_end) {
         return -3; // error, packet too short for IP header
     }
-
+    struct iphdr *ip = data + sizeof(struct ethhdr);
     #ifndef SILENT
     //4 : fill net_event vector with features if it exists (== if debug)
     if (nete) {
@@ -248,6 +249,8 @@ int xdp_dt(struct xdp_md *ctx)
     struct netevent *ne;
     #ifndef SILENT
     ne = bpf_ringbuf_reserve(&events_ring, sizeof(struct netevent), 0);
+    #else
+    ne = NULL; // ensure we don't pass an uninitialized pointer when SILENT is defined
     #endif
 
     //parse the packet & update the feature vector
