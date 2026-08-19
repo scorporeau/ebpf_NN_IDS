@@ -5,8 +5,8 @@
 #ifndef __COMMON_H
 #define __COMMON_H
 
-#define NET_INTERFACE "enx6c0b5ef61e49" //PUT YOUR NETWORK INTERFACE NAME HERE
-#define SILENT // define to tell the kernel space to totally forgot about transmitting information with a ring buffer.
+// Network interface and silent-mode flags are defined by the build system,
+// not in the shared header, so they can be toggled per build target.
 
 // Maximum length for command name storage
 // Linux TASK_COMM_LEN is 16, we use the same

@@ -37,7 +37,14 @@ In order to do that, you simply have to download the zip file from the [libbpf g
 ## build
 
 
-Once everything is set up, simply run the `make` command in the root directory, it will compile everything into the newly created `./build` directory, which should look something like this :
+
+Once everything is set up, simply run the `make` command in the root directory, it will compile everything into the newly created `./build` directory.
+| make option | behavior |
+| ----------- | -------- |
+| silent | disable ringbuffer structures that passes information to user space |
+| noktime | silent + no use of `bpf_ktime_get_ns` syscall (unsupported by some hardware) |
+
+The `build` directory should look something like this :
 
 ```text
 build

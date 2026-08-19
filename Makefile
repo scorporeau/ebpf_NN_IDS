@@ -14,22 +14,25 @@ ARCH := $(shell uname -m | sed 's/x86_64/x86/' | sed 's/aarch64/arm64/')
 # Include paths for headers
 INCLUDES := -Iinclude -Ibuild
 
-# Build mode toggle. Default build does not define NOKTIME.
-# `make noktime` will set NOKTIME=1 and add the preprocessor define.
+# Build configuration for optional features.
+# Default build: no NOKTIME, no SILENT.
+# `make noktime`: enables both NOKTIME and SILENT automatically.
 NOKTIME ?= 0
+SILENT ?= 0
+NET_INTERFACE ?= enx6c0b5ef61e49
 
 # Compiler flags for eBPF programs
 # -g: Include debug info (required for BTF)
 # -O2: Optimization level (required for some BPF features)
 # -target bpf: Generate BPF bytecode
 # -D__TARGET_ARCH_$(ARCH): Define target architecture for CO-RE
-# Optional -DNOKTIME when building the noktime variant
-BPF_CFLAGS = -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) $(if $(filter 1,$(NOKTIME)),-DNOKTIME,)
+# Optional defines are injected here so build mode is controlled centrally.
+BPF_CFLAGS = -g -O2 -target bpf -D__TARGET_ARCH_$(ARCH) -DNET_INTERFACE=\"$(NET_INTERFACE)\" $(if $(filter 1,$(SILENT)),-DSILENT,) $(if $(filter 1,$(NOKTIME)),-DNOKTIME,)
 
 # Compiler flags for user-space program
 # -Wall -Wextra: Enable warnings
 # -g: Debug info for debugging
-USER_CFLAGS = -Wall -Wextra -g $(if $(filter 1,$(NOKTIME)),-DNOKTIME,) $(INCLUDES)
+USER_CFLAGS = -Wall -Wextra -g -DNET_INTERFACE=\"$(NET_INTERFACE)\" $(if $(filter 1,$(SILENT)),-DSILENT,) $(if $(filter 1,$(NOKTIME)),-DNOKTIME,) $(INCLUDES)
 
 # Libraries for user-space program
 # -lbpf: libbpf library
@@ -57,8 +60,10 @@ USER_BINS := $(patsubst $(SRC_DIR)/%.usr.c,$(BUILD_DIR)/%,$(USER_SOURCES))
 .PHONY: all noktime
 all: $(USER_BINS)
 
-# Build the same project with NOKTIME enabled
+# Build the same project with NOKTIME enabled.
+# Noktime implies silent mode to avoid ring-buffer traffic in that mode.
 noktime: NOKTIME := 1
+noktime: SILENT := 1
 noktime: all
 
 # Create build directory if it doesn't exist
