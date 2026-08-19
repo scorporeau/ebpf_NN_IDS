@@ -43,6 +43,7 @@ Once everything is set up, simply run the `make` command in the root directory, 
 | ----------- | -------- |
 | silent | disable ringbuffer structures that passes information to user space |
 | noktime | silent + no use of `bpf_ktime_get_ns` syscall (unsupported by some hardware) |
+| -n NET_INTERFACE=eth0 | define the used network interface (libbpf user-space only) |
 
 The `build` directory should look something like this :
 
