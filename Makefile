@@ -57,8 +57,12 @@ USER_BINS := $(patsubst $(SRC_DIR)/%.usr.c,$(BUILD_DIR)/%,$(USER_SOURCES))
 .SECONDARY: $(BPF_OBJECTS) $(SKELETONS)
 
 # Default target: build everything without NOKTIME
-.PHONY: all noktime
+.PHONY: all silent noktime
 all: $(USER_BINS)
+
+# Build the same project in silent mode.
+silent: SILENT := 1
+silent: all
 
 # Build the same project with NOKTIME enabled.
 # Noktime implies silent mode to avoid ring-buffer traffic in that mode.
