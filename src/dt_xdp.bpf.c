@@ -39,7 +39,11 @@ struct {
 
 //Flow LRU hashmap, to process per-flow features (mean_packet_size & time_since_last_packet). In theory, will only be useful if there is some features that requires flow (FEATURES >> 64 != 0)
 struct {
+    #ifdef NOKTIME
+    __uint(type, BPF_MAP_TYPE_HASH);
+    #else
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    #endif
     // Maximum number of entries in the map (adjust as needed)
     __uint(max_entries, (((FEATURES & F_RANGE_FLOW) != 0) ? 2048 : 1));
     // Key is a __u128 of combined source_ip (32), source_port(16), dest_ip (32), dest_port (16), protocol(8) plus 32 filler bits. (not optimal)
@@ -289,14 +293,14 @@ drop:
         bpf_ringbuf_submit(ne, 0);
     }
     #endif
-    return XDP_DROP; //Not actually dropping packets, might cause issue while testing
+    return XDP_PASS; //Not actually dropping packets, might cause issue while testing
 dropsilent:
     #ifndef SILENT
     if (ne) {
         bpf_ringbuf_discard(ne, 0);
     }
     #endif
-    return XDP_DROP; //Not actually dropping packets, might cause issue while testing
+    return XDP_PASS; //Not actually dropping packets, might cause issue while testing
 pass:
     #ifndef SILENT
     if (ne) {
